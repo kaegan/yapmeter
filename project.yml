@@ -1,0 +1,50 @@
+name: Semaphore
+options:
+  bundleIdPrefix: fyi.kaegan
+  deploymentTarget:
+    macOS: "14.2"
+targets:
+  Semaphore:
+    type: application
+    platform: macOS
+    sources:
+      - path: Semaphore
+        excludes:
+          - Info.plist
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: fyi.kaegan.semaphore
+        PRODUCT_NAME: Semaphore
+        INFOPLIST_FILE: Semaphore/Info.plist
+        GENERATE_INFOPLIST_FILE: NO
+        MARKETING_VERSION: "0.1.0"
+        CURRENT_PROJECT_VERSION: "1"
+        SWIFT_VERSION: "6.0"
+        SWIFT_STRICT_CONCURRENCY: complete
+        ENABLE_HARDENED_RUNTIME: YES
+        ENABLE_APP_SANDBOX: NO
+        CODE_SIGN_STYLE: Automatic
+        MACOSX_DEPLOYMENT_TARGET: "14.2"
+  SemaphoreTests:
+    type: bundle.unit-test
+    platform: macOS
+    sources:
+      - SemaphoreTests
+    dependencies:
+      - target: Semaphore
+    settings:
+      base:
+        SWIFT_VERSION: "6.0"
+        MACOSX_DEPLOYMENT_TARGET: "14.2"
+schemes:
+  Semaphore:
+    build:
+      targets:
+        Semaphore: all
+        SemaphoreTests: [test]
+    run:
+      config: Debug
+    test:
+      config: Debug
+      targets:
+        - SemaphoreTests
