@@ -36,6 +36,9 @@ targets:
       base:
         SWIFT_VERSION: "6.0"
         MACOSX_DEPLOYMENT_TARGET: "14.2"
+        GENERATE_INFOPLIST_FILE: YES
+        PRODUCT_BUNDLE_IDENTIFIER: fyi.kaegan.semaphore.tests
+        CODE_SIGN_STYLE: Automatic
 schemes:
   Semaphore:
     build:

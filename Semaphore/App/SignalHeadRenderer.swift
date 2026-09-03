@@ -9,6 +9,7 @@ import AppKit
 /// `NSImage`s with `isTemplate = false` ourselves. If that still gets
 /// flattened to template by SwiftUI, the fallback is a raw `NSStatusItem`
 /// via `NSApplicationDelegateAdaptor` (see SemaphoreApp.swift comment).
+@MainActor
 enum SignalHeadRenderer {
     private static var cache: [Aspect: NSImage] = [:]
 

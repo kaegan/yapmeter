@@ -11,16 +11,24 @@ final class AppState {
     var aspect: Aspect = .dark
 
     private var demoTimer: Timer?
+    private var demoIndex = 0
 
-    func startDemoCycle() {
-        var index = 0
-        let sequence = Aspect.allCases
+    init() {
+        startDemoCycle()
+    }
+
+    private func startDemoCycle() {
         demoTimer = Timer.scheduledTimer(withTimeInterval: 1.5, repeats: true) { [weak self] _ in
             Task { @MainActor in
-                self?.aspect = sequence[index % sequence.count]
-                index += 1
+                self?.advanceDemo()
             }
         }
+    }
+
+    private func advanceDemo() {
+        let sequence = Aspect.allCases
+        aspect = sequence[demoIndex % sequence.count]
+        demoIndex += 1
     }
 }
 
@@ -35,11 +43,5 @@ struct SemaphoreApp: App {
             Image(nsImage: SignalHeadRenderer.image(for: appState.aspect))
         }
         .menuBarExtraStyle(.window)
-        .onChange(of: appState.aspect) { _, _ in }
-        .defaultAppStorage(.standard)
-        .commands { }
-        .onAppear {
-            appState.startDemoCycle()
-        }
     }
 }
