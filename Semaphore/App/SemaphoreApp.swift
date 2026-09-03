@@ -9,6 +9,7 @@ import Observation
 @Observable
 final class AppState {
     var aspect: Aspect = .dark
+    let audioMonitor = AudioMonitor()
 
     private var demoTimer: Timer?
     private var demoIndex = 0
