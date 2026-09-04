@@ -7,6 +7,7 @@ import SwiftUI
 /// line and, where there's somewhere to send you, a button.
 struct SemaphoreMenu: View {
     @Bindable var engine: SignalEngine
+    @Bindable var style: MenuBarStyle
 
     var body: some View {
         if let problem = problemText(for: engine.audioMonitor.status) {
@@ -24,6 +25,20 @@ struct SemaphoreMenu: View {
             Toggle(level.displayName, isOn: selection(for: level))
         }
         Divider()
+        // Submenus, not more headers: eight glyphs and three palettes would
+        // otherwise be most of the menu, and they're a trial, not a setting
+        // anyone changes twice a day.
+        Menu("Glyph") {
+            ForEach(GlyphStyle.allCases, id: \.self) { glyph in
+                Toggle(glyph.displayName, isOn: selection(for: glyph))
+            }
+        }
+        Menu("Colours") {
+            ForEach(LampPalette.allCases, id: \.self) { palette in
+                Toggle(palette.displayName, isOn: selection(for: palette))
+            }
+        }
+        Divider()
         // An LSUIElement app has no app menu, so this is the only ⌘Q there is.
         Button("Quit Semaphore") { NSApp.terminate(nil) }
             .keyboardShortcut("q")
@@ -35,6 +50,20 @@ struct SemaphoreMenu: View {
         Binding(
             get: { engine.sensitivity == level },
             set: { isOn in if isOn { engine.sensitivity = level } }
+        )
+    }
+
+    private func selection(for glyph: GlyphStyle) -> Binding<Bool> {
+        Binding(
+            get: { style.glyph == glyph },
+            set: { isOn in if isOn { style.glyph = glyph } }
+        )
+    }
+
+    private func selection(for palette: LampPalette) -> Binding<Bool> {
+        Binding(
+            get: { style.palette == palette },
+            set: { isOn in if isOn { style.palette = palette } }
         )
     }
 

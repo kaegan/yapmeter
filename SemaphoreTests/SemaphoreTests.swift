@@ -181,6 +181,34 @@ final class MeetingDetectionTests: XCTestCase {
     }
 }
 
+final class MenuBarStyleTests: XCTestCase {
+    /// The menu lists these top to bottom: the original lamp first, then the
+    /// pets, then the railway, matching the brand boards they came from.
+    func testGlyphsAreListedLampPetsThenRailway() {
+        XCTAssertEqual(GlyphStyle.allCases, [
+            .lamp, .petClassic, .petMouth, .petHollowSolid, .petPair,
+            .semaphoreArm, .wideHead, .crossingBarrier,
+        ])
+    }
+
+    func testEveryGlyphAndPaletteHasAName() {
+        for glyph in GlyphStyle.allCases {
+            XCTAssertFalse(glyph.displayName.isEmpty, "\(glyph)")
+        }
+        for palette in LampPalette.allCases {
+            XCTAssertFalse(palette.displayName.isEmpty, "\(palette)")
+        }
+    }
+
+    /// Every palette keeps the dark aspect as a label colour: an out-of-service
+    /// signal is furniture, not a fifth colour.
+    func testDarkAspectIsNeverAPaletteColour() {
+        for palette in LampPalette.allCases {
+            XCTAssertEqual(palette.color(for: .dark), .secondaryLabelColor, "\(palette)")
+        }
+    }
+}
+
 @MainActor
 final class SignalHeadRendererTests: XCTestCase {
     func testTimeLabelFormatsAsMinutesAndSeconds() {
@@ -188,5 +216,66 @@ final class SignalHeadRendererTests: XCTestCase {
         XCTAssertEqual(SignalHeadRenderer.timeLabel(9), "0:09")
         XCTAssertEqual(SignalHeadRenderer.timeLabel(65), "1:05")
         XCTAssertEqual(SignalHeadRenderer.timeLabel(600), "10:00")
+    }
+
+    /// Every glyph, in every palette and aspect, draws something into the
+    /// 18pt slot. This runs the drawing code for real rather than trusting
+    /// the handler to do it later.
+    func testEveryGlyphDrawsInEveryAspectAndPalette() {
+        for glyph in GlyphStyle.allCases {
+            for palette in LampPalette.allCases {
+                for aspect in Aspect.allCases {
+                    let image = SignalHeadRenderer.menuBarImage(
+                        for: aspect, speakingSeconds: nil, glyph: glyph, palette: palette
+                    )
+                    let label = "\(glyph) \(palette) \(aspect)"
+                    XCTAssertEqual(image.size.height, 18, label)
+                    XCTAssertEqual(image.size.width, SignalHeadRenderer.width(of: glyph) + 4, label)
+                    XCTAssertTrue(paintsAnything(image), "\(label) drew nothing")
+                }
+            }
+        }
+    }
+
+    func testTimerWidensTheImageAndStillDraws() {
+        for glyph in GlyphStyle.allCases {
+            let silent = SignalHeadRenderer.menuBarImage(for: .speaking, speakingSeconds: nil, glyph: glyph)
+            let talking = SignalHeadRenderer.menuBarImage(for: .speaking, speakingSeconds: 42, glyph: glyph)
+            let longTurn = SignalHeadRenderer.menuBarImage(
+                for: .speaking, speakingSeconds: SignalHeadRenderer.longTurnSeconds + 32, glyph: glyph
+            )
+            XCTAssertGreaterThan(talking.size.width, silent.size.width, "\(glyph)")
+            XCTAssertTrue(paintsAnything(talking), "\(glyph) at 0:42 drew nothing")
+            XCTAssertTrue(paintsAnything(longTurn), "\(glyph) on a long turn drew nothing")
+        }
+    }
+
+    /// Render at 2x, as the menu bar does, and look for any non-transparent
+    /// pixel.
+    private func paintsAnything(_ image: NSImage) -> Bool {
+        let scale = 2
+        let width = Int(image.size.width) * scale
+        let height = Int(image.size.height) * scale
+        guard let rep = NSBitmapImageRep(
+            bitmapDataPlanes: nil, pixelsWide: width, pixelsHigh: height,
+            bitsPerSample: 8, samplesPerPixel: 4, hasAlpha: true, isPlanar: false,
+            colorSpaceName: .deviceRGB, bytesPerRow: 0, bitsPerPixel: 0
+        ), let context = NSGraphicsContext(bitmapImageRep: rep) else {
+            return false
+        }
+        rep.size = image.size
+        NSGraphicsContext.saveGraphicsState()
+        NSGraphicsContext.current = context
+        image.draw(in: NSRect(origin: .zero, size: image.size))
+        NSGraphicsContext.restoreGraphicsState()
+
+        guard let data = rep.bitmapData else { return false }
+        for y in 0..<height {
+            let row = data + y * rep.bytesPerRow
+            for x in 0..<width where row[x * 4 + 3] > 0 {
+                return true
+            }
+        }
+        return false
     }
 }
