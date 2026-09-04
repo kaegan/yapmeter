@@ -65,11 +65,6 @@ final class SignalEngine {
         audioMonitor.stop()
     }
 
-    /// The detectors' current view of the room, for the popover's debug meters.
-    var noiseFloors: (farEnd: Float, nearEnd: Float) {
-        (farEndDetector.noiseFloor, nearEndDetector.noiseFloor)
-    }
-
     private func tick(now: Date = Date()) {
         let meetingActive = audioMonitor.isMeetingActive
 

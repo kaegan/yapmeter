@@ -22,20 +22,22 @@ import Foundation
 /// The same detector runs on both ends of the call: the far end via the
 /// process tap, the near end via the microphone.
 struct VoiceActivityDetector {
-    /// How readily the detector calls something speech. Exposed in the popover
+    /// How readily the detector calls something speech. Exposed in the menu
     /// because rooms differ by more than any single default can cover.
     enum Sensitivity: String, CaseIterable, Sendable {
-        /// Quiet room, quiet talker. Catches more, false-positives more.
-        case high
-        case normal
         /// Noisy room. Needs a clear voice to trigger.
         case low
+        case normal
+        /// Quiet room, quiet talker. Catches more, false-positives more.
+        case high
 
+        /// Menu item labels. The parentheticals are the only hint the user
+        /// gets, so they say when to pick each one.
         var displayName: String {
             switch self {
-            case .high: return "High"
+            case .low: return "Low (noisy room)"
             case .normal: return "Normal"
-            case .low: return "Low"
+            case .high: return "High (quiet room)"
             }
         }
 
