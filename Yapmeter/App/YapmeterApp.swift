@@ -1,12 +1,12 @@
 import SwiftUI
 
 @main
-struct SemaphoreApp: App {
+struct YapmeterApp: App {
     @State private var engine = SignalEngine()
 
     var body: some Scene {
         MenuBarExtra {
-            SemaphoreMenu(engine: engine)
+            YapmeterMenu(engine: engine)
         } label: {
             Image(nsImage: SignalHeadRenderer.menuBarImage(
                 for: engine.aspect,

@@ -5,7 +5,7 @@ import SwiftUI
 /// whole display, so there's nothing to report in here that the icon didn't
 /// already say. The one exception is a problem worth acting on, which gets a
 /// line and, where there's somewhere to send you, a button.
-struct SemaphoreMenu: View {
+struct YapmeterMenu: View {
     @Bindable var engine: SignalEngine
 
     var body: some View {
@@ -25,7 +25,7 @@ struct SemaphoreMenu: View {
         }
         Divider()
         // An LSUIElement app has no app menu, so this is the only ⌘Q there is.
-        Button("Quit Semaphore") { NSApp.terminate(nil) }
+        Button("Quit Yapmeter") { NSApp.terminate(nil) }
             .keyboardShortcut("q")
     }
 
