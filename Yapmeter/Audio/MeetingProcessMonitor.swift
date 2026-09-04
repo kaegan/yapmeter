@@ -9,11 +9,29 @@ enum MeetingProcessMonitor {
     /// because Chrome and Slack play audio from a helper process whose
     /// bundle ID extends the main app's (e.g. "com.google.Chrome.helper"),
     /// not from the main PID `NSRunningApplication` would give you.
+    ///
+    /// FaceTime is listed on a best guess: its audio may run through the
+    /// `avconferenced` daemon rather than the app, and neither has been
+    /// confirmed to show up here. The menu's "Listen to All Audio" override
+    /// is the fallback for any call this list misses.
     static let targetBundleIDPrefixes = [
         "us.zoom.",
         "com.google.Chrome",
         "com.tinyspeck.slackmacgap",
+        "com.apple.FaceTime",
+        "com.apple.avconferenced",
     ]
+
+    /// The status line says "Listening to Zoom", not "us.zoom.xos".
+    static func appName(forBundleID bundleID: String) -> String {
+        if bundleID.hasPrefix("us.zoom.") { return "Zoom" }
+        if bundleID.hasPrefix("com.google.Chrome") { return "Chrome" }
+        if bundleID.hasPrefix("com.tinyspeck.slackmacgap") { return "Slack" }
+        if bundleID.hasPrefix("com.apple.FaceTime") || bundleID.hasPrefix("com.apple.avconferenced") {
+            return "FaceTime"
+        }
+        return bundleID
+    }
 
     struct MatchedProcess: Identifiable, Sendable {
         let id: AudioObjectID

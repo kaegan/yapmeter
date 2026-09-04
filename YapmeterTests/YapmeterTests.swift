@@ -190,3 +190,41 @@ final class SignalHeadRendererTests: XCTestCase {
         XCTAssertEqual(SignalHeadRenderer.timeLabel(600), "10:00")
     }
 }
+
+final class LevelMeterTests: XCTestCase {
+    func testStartsSilent() {
+        XCTAssertEqual(LevelMeter().consumePeak(), LevelMeter.silence)
+    }
+
+    func testKnowsWhetherAudioHasArrived() {
+        let meter = LevelMeter()
+        XCTAssertFalse(meter.hasReceivedAudio)
+        meter.update(dBFS: -40)
+        XCTAssertTrue(meter.hasReceivedAudio)
+        meter.reset()
+        XCTAssertFalse(meter.hasReceivedAudio)
+        XCTAssertEqual(meter.consumePeak(), LevelMeter.silence)
+    }
+
+    func testReturnsPeakSinceLastRead() {
+        let meter = LevelMeter()
+        meter.update(dBFS: -40)
+        meter.update(dBFS: -20)
+        meter.update(dBFS: -35)
+        XCTAssertEqual(meter.consumePeak(), -20)
+    }
+
+    /// The microphone delivers 100ms buffers against a 20ms tick. The ticks
+    /// in between must see the last level, not silence, or the detector's
+    /// noise floor collapses and its onset timer never completes.
+    func testHoldsLastLevelBetweenBuffers() {
+        let meter = LevelMeter()
+        meter.update(dBFS: -40)
+        meter.update(dBFS: -20)
+        XCTAssertEqual(meter.consumePeak(), -20)
+        XCTAssertEqual(meter.consumePeak(), -20)
+        meter.update(dBFS: -45)
+        XCTAssertEqual(meter.consumePeak(), -45)
+        XCTAssertEqual(meter.consumePeak(), -45)
+    }
+}

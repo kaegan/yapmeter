@@ -48,14 +48,33 @@ enum SignalHeadRenderer {
 
     private static func lampOnlyImage(for aspect: Aspect) -> NSImage {
         if let cached = lampCache[aspect] { return cached }
+        let image = aspect == .dark ? darkSignalImage() : litLampImage(for: aspect)
+        image.accessibilityDescription = aspect.displayName
+        lampCache[aspect] = image
+        return image
+    }
+
+    private static func litLampImage(for aspect: Aspect) -> NSImage {
         let width = lampDiameter + horizontalPadding * 2
         let image = NSImage(size: NSSize(width: width, height: height), flipped: false) { _ in
             draw(lamp: lampRect(atX: horizontalPadding), aspect: aspect)
             return true
         }
         image.isTemplate = false
-        image.accessibilityDescription = aspect.displayName
-        lampCache[aspect] = image
+        return image
+    }
+
+    /// No meeting: two speech bubbles, the conversation the signal is for,
+    /// as a template image so the menu bar tints it like its own icons (and
+    /// highlights it when the menu is open). A lone grey ring, the previous
+    /// idle state, read as "broken" rather than "waiting".
+    private static func darkSignalImage() -> NSImage {
+        let configuration = NSImage.SymbolConfiguration(pointSize: 13, weight: .medium)
+        // Force-unwrapped: the symbol has shipped since macOS 11 and the
+        // deployment target is 14.2.
+        let image = NSImage(systemSymbolName: "bubble.left.and.bubble.right", accessibilityDescription: nil)!
+            .withSymbolConfiguration(configuration)!
+        image.isTemplate = true
         return image
     }
 
@@ -90,17 +109,10 @@ enum SignalHeadRenderer {
         NSRect(x: x, y: (height - lampDiameter) / 2, width: lampDiameter, height: lampDiameter)
     }
 
-    /// A lit lamp is a filled disc with a soft glow behind it. A dark signal
-    /// draws as an outline only, so the status item still has something to
-    /// look at and to click when no meeting is running.
+    /// A lit lamp is a filled disc with a soft glow behind it. The dark
+    /// aspect never comes through here; see `darkSignalImage()`.
     private static func draw(lamp rect: NSRect, aspect: Aspect) {
         let path = NSBezierPath(ovalIn: rect)
-        guard aspect != .dark else {
-            NSColor.secondaryLabelColor.setStroke()
-            path.lineWidth = 1.2
-            path.stroke()
-            return
-        }
         let lampColor = color(for: aspect)
         let glowRect = rect.insetBy(dx: -3, dy: -3)
         if let glow = NSGradient(
