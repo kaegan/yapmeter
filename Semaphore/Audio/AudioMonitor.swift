@@ -29,6 +29,18 @@ final class AudioMonitor {
     private(set) var status: Status = .waitingForMeeting
     private(set) var isMeetingActive = false
 
+    /// Treat the Mac as being in a call regardless of what detection says,
+    /// tapping all system audio instead of one app's. For calls in apps we
+    /// can't see (FaceTime, a browser we don't list, a phone mirrored to the
+    /// desktop). Never persisted: forgetting it's on would leave the mic and
+    /// a system-audio tap open all day, so it resets on relaunch.
+    var listenToAllAudio = false {
+        didSet {
+            guard listenToAllAudio != oldValue else { return }
+            applyListenToAllAudio()
+        }
+    }
+
     private let tapSource = ProcessTapSource()
     private let micSource = MicrophoneSource()
     private var detectTimer: Timer?
@@ -78,6 +90,9 @@ final class AudioMonitor {
     // MARK: - Detection
 
     private func detect() {
+        // The override owns capture while it's on; polling would only fight it.
+        guard !listenToAllAudio else { return }
+
         let matches: [MeetingProcessMonitor.MatchedProcess]
         do {
             matches = try MeetingProcessMonitor.matchingProcesses()
@@ -103,13 +118,31 @@ final class AudioMonitor {
         }
     }
 
-    private func startCapture(for matches: [MeetingProcessMonitor.MatchedProcess]) {
-        guard !isStarting, !matches.isEmpty else { return }
+    /// Switching the override on replaces whatever capture is running with a
+    /// global one; switching it off tears down and hands back to detection,
+    /// which restarts a per-app tap on its next pass if a meeting is live.
+    private func applyListenToAllAudio() {
+        tearDownCapture()
+        quietPolls = 0
+        if listenToAllAudio {
+            isMeetingActive = true
+            startCapture(for: nil)
+        } else {
+            isMeetingActive = false
+            detect()
+        }
+    }
+
+    /// Pass the matched processes to tap just those, or nil to tap all
+    /// system audio.
+    private func startCapture(for matches: [MeetingProcessMonitor.MatchedProcess]?) {
+        guard !isStarting else { return }
+        if let matches, matches.isEmpty { return }
         isStarting = true
         status = .starting
 
-        let processIDs = matches.map(\.id)
-        let bundleIDs = matches.map(\.bundleID)
+        let processIDs = matches?.map(\.id)
+        let bundleIDs = matches?.map(\.bundleID) ?? []
         let tap = tapSource
         let mic = micSource
 
@@ -119,7 +152,13 @@ final class AudioMonitor {
             // Both permission prompts fire here on first run, and both block
             // until the user answers, so keep them off the main thread.
             do {
-                try await Task.detached { try tap.start(processes: processIDs) }.value
+                try await Task.detached {
+                    if let processIDs {
+                        try tap.start(processes: processIDs)
+                    } else {
+                        try tap.startGlobal()
+                    }
+                }.value
             } catch {
                 Self.logger.error("Process tap failed: \(String(describing: error), privacy: .public)")
                 self.status = .error(String(describing: error))

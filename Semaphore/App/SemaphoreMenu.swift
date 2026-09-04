@@ -24,6 +24,11 @@ struct SemaphoreMenu: View {
             Toggle(level.displayName, isOn: selection(for: level))
         }
         Divider()
+        // For calls detection can't see (FaceTime, for one). Named for what
+        // it does rather than "manual mode", because what it does is the
+        // caveat: anything the Mac plays will drive the signal while it's on.
+        Toggle("Listen to All Audio", isOn: listenToAllAudio)
+        Divider()
         // An LSUIElement app has no app menu, so this is the only ⌘Q there is.
         Button("Quit Semaphore") { NSApp.terminate(nil) }
             .keyboardShortcut("q")
@@ -35,6 +40,13 @@ struct SemaphoreMenu: View {
         Binding(
             get: { engine.sensitivity == level },
             set: { isOn in if isOn { engine.sensitivity = level } }
+        )
+    }
+
+    private var listenToAllAudio: Binding<Bool> {
+        Binding(
+            get: { engine.audioMonitor.listenToAllAudio },
+            set: { engine.audioMonitor.listenToAllAudio = $0 }
         )
     }
 

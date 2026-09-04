@@ -10,8 +10,10 @@ railway block signal, whether it's safe to speak:
 - **Green (clear)** — they've stopped. Go.
 - **Blue** — you have the floor, with a running timer for your turn.
 
-The menu bar lamp is the whole display. Clicking it opens a standard menu with
-settings only: the sensitivity setting and Quit.
+The menu bar lamp is the whole display. When there's no meeting it shows a
+small semaphore post instead, tinted like the system's own menu bar icons.
+Clicking it opens a standard menu with settings only: sensitivity, a manual
+override, and Quit.
 
 It taps the *output* audio of your meeting app (Zoom, Chrome/Meet, Slack
 huddles) with a CoreAudio process tap for the far end, and the microphone for
@@ -27,6 +29,11 @@ output alone isn't enough, or a Chrome tab playing a video would count. Output
 is the fallback when no process reports input, which covers a Zoom lobby. When
 the meeting ends both capture paths are torn down, so the app isn't holding an
 aggregate audio device or the mic open all day.
+
+Calls the detector can't see (FaceTime is one) can be handled by hand:
+**Listen to All Audio** in the menu taps everything the Mac is playing, plus
+the mic, until you switch it off. Music or a video will drive the signal too
+while it's on, and it resets when the app relaunches.
 
 ## Voice detection and noise
 
