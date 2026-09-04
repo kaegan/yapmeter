@@ -210,6 +210,58 @@ final class MenuBarStyleTests: XCTestCase {
 }
 
 @MainActor
+final class AspectPreviewTests: XCTestCase {
+    func testFramesCoverEveryAspectAndALongTurn() {
+        let aspects = Set(AspectPreview.frames.map(\.aspect))
+        XCTAssertEqual(aspects, Set(Aspect.allCases))
+        let longest = AspectPreview.frames.compactMap(\.speakingSeconds).max() ?? 0
+        XCTAssertGreaterThanOrEqual(longest, SignalHeadRenderer.longTurnSeconds)
+        // The clock is only ever shown while speaking.
+        for frame in AspectPreview.frames where frame.speakingSeconds != nil {
+            XCTAssertEqual(frame.aspect, .speaking)
+        }
+    }
+
+    func testAdvanceWalksTheFramesAndWrapsAround() {
+        let preview = AspectPreview()
+        XCTAssertFalse(preview.isRunning)
+        preview.start()
+        XCTAssertTrue(preview.isRunning)
+        XCTAssertEqual(preview.aspect, AspectPreview.frames[0].aspect)
+
+        var seen: [Aspect] = []
+        for _ in AspectPreview.frames {
+            seen.append(preview.aspect)
+            preview.advance()
+        }
+        XCTAssertEqual(seen, AspectPreview.frames.map(\.aspect))
+        XCTAssertEqual(preview.aspect, AspectPreview.frames[0].aspect, "wraps to the start")
+        preview.stop()
+    }
+
+    func testStopGoesDarkAndAdvanceIsThenANoOp() {
+        let preview = AspectPreview()
+        preview.start()
+        for _ in 0..<6 { preview.advance() }
+        XCTAssertNotEqual(preview.aspect, .dark)
+        preview.stop()
+        XCTAssertFalse(preview.isRunning)
+        XCTAssertEqual(preview.aspect, .dark)
+        XCTAssertNil(preview.speakingSeconds)
+        preview.advance()
+        XCTAssertEqual(preview.aspect, .dark)
+    }
+
+    func testIsOnMirrorsRunning() {
+        let preview = AspectPreview()
+        preview.isOn = true
+        XCTAssertTrue(preview.isRunning)
+        preview.isOn = false
+        XCTAssertFalse(preview.isRunning)
+    }
+}
+
+@MainActor
 final class SignalHeadRendererTests: XCTestCase {
     func testTimeLabelFormatsAsMinutesAndSeconds() {
         XCTAssertEqual(SignalHeadRenderer.timeLabel(0), "0:00")
@@ -219,8 +271,8 @@ final class SignalHeadRendererTests: XCTestCase {
     }
 
     /// Every glyph, in every palette and aspect, draws something into the
-    /// 18pt slot. This runs the drawing code for real rather than trusting
-    /// the handler to do it later.
+    /// image. This runs the drawing code for real rather than trusting the
+    /// handler to do it later.
     func testEveryGlyphDrawsInEveryAspectAndPalette() {
         for glyph in GlyphStyle.allCases {
             for palette in LampPalette.allCases {
@@ -229,7 +281,7 @@ final class SignalHeadRendererTests: XCTestCase {
                         for: aspect, speakingSeconds: nil, glyph: glyph, palette: palette
                     )
                     let label = "\(glyph) \(palette) \(aspect)"
-                    XCTAssertEqual(image.size.height, 18, label)
+                    XCTAssertEqual(image.size.height, SignalHeadRenderer.imageHeight, label)
                     XCTAssertEqual(image.size.width, SignalHeadRenderer.width(of: glyph) + 4, label)
                     XCTAssertTrue(paintsAnything(image), "\(label) drew nothing")
                 }
@@ -254,8 +306,8 @@ final class SignalHeadRendererTests: XCTestCase {
     /// pixel.
     private func paintsAnything(_ image: NSImage) -> Bool {
         let scale = 2
-        let width = Int(image.size.width) * scale
-        let height = Int(image.size.height) * scale
+        let width = Int(ceil(image.size.width)) * scale
+        let height = Int(ceil(image.size.height)) * scale
         guard let rep = NSBitmapImageRep(
             bitmapDataPlanes: nil, pixelsWide: width, pixelsHigh: height,
             bitsPerSample: 8, samplesPerPixel: 4, hasAlpha: true, isPlanar: false,

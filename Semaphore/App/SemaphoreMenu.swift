@@ -8,6 +8,7 @@ import SwiftUI
 struct SemaphoreMenu: View {
     @Bindable var engine: SignalEngine
     @Bindable var style: MenuBarStyle
+    @Bindable var preview: AspectPreview
 
     var body: some View {
         if let problem = problemText(for: engine.audioMonitor.status) {
@@ -38,6 +39,9 @@ struct SemaphoreMenu: View {
                 Toggle(palette.displayName, isOn: selection(for: palette))
             }
         }
+        // Cycles the lamp through every state so a glyph can be judged
+        // without a meeting. Turns itself off when a real one starts.
+        Toggle("Preview states", isOn: $preview.isOn)
         Divider()
         // An LSUIElement app has no app menu, so this is the only ⌘Q there is.
         Button("Quit Semaphore") { NSApp.terminate(nil) }

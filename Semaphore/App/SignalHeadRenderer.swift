@@ -4,10 +4,12 @@ import AppKit
 /// your turn's elapsed time when you're the one talking. This is the app's
 /// entire display; the menu behind it holds settings only.
 ///
-/// Every glyph is drawn in a 16pt box inside the 18pt image, in y-down
-/// coordinates so the brand sketches translate across unchanged. Eyes, mouths
-/// and stripes are cut out of the glyph rather than painted in a background
-/// colour, because the menu bar has no fixed background to match.
+/// Every glyph is drawn in the sketches' own 16-unit, y-down coordinates and
+/// scaled into a 20pt box inside the 22pt image, so the drawings translate
+/// across unchanged and still sit at the size of the icons around them (a
+/// 16pt box left the pets' bodies at 11pt, once the tail had its share).
+/// Eyes, mouths and stripes are cut out of the glyph rather than painted in a
+/// background colour, because the menu bar has no fixed background to match.
 ///
 /// `MenuBarExtra` tends to force template (monochrome) rendering on
 /// SwiftUI-provided label content, so we draw and cache real `NSImage`s with
@@ -22,8 +24,12 @@ enum SignalHeadRenderer {
 
     private static var cache: [CacheKey: NSImage] = [:]
 
-    private static let height: CGFloat = 18
-    private static let glyphHeight: CGFloat = 16
+    /// The menu bar is 24pt; this leaves a point above and below.
+    static let imageHeight: CGFloat = 22
+    private static let glyphHeight: CGFloat = 20
+    /// The sketches are drawn in a 16-unit box.
+    private static let sketchUnits: CGFloat = 16
+    private static let glyphScale = glyphHeight / sketchUnits
     private static let horizontalPadding: CGFloat = 2
     private static let glyphTextGap: CGFloat = 5
 
@@ -55,15 +61,17 @@ enum SignalHeadRenderer {
         return String(format: "%d:%02d", clamped / 60, clamped % 60)
     }
 
-    /// How wide each glyph's box is. Heights are all 16.
+    /// How wide each glyph's box is, in points. Heights are all `glyphHeight`.
     static func width(of glyph: GlyphStyle) -> CGFloat {
+        let units: CGFloat
         switch glyph {
-        case .lamp, .petClassic, .petMouth, .petHollowSolid: return 16
-        case .semaphoreArm: return 17
-        case .crossingBarrier: return 18
-        case .wideHead: return 26
-        case .petPair: return 27
+        case .lamp, .petClassic, .petMouth, .petHollowSolid: units = 16
+        case .semaphoreArm: units = 17
+        case .crossingBarrier: units = 18
+        case .wideHead: units = 26
+        case .petPair: units = 27
         }
+        return ceil(units * glyphScale)
     }
 
     // MARK: - Images
@@ -72,7 +80,7 @@ enum SignalHeadRenderer {
         let key = CacheKey(aspect: aspect, glyph: glyph, palette: palette)
         if let cached = cache[key] { return cached }
         let width = horizontalPadding * 2 + width(of: glyph)
-        let image = NSImage(size: NSSize(width: width, height: height), flipped: true) { _ in
+        let image = NSImage(size: NSSize(width: width, height: imageHeight), flipped: true) { _ in
             draw(glyph, aspect: aspect, palette: palette, longTurn: false, atX: horizontalPadding)
             return true
         }
@@ -102,7 +110,7 @@ enum SignalHeadRenderer {
         let glyphWidth = width(of: glyph)
         let width = horizontalPadding * 2 + glyphWidth + glyphTextGap + ceil(textSize.width)
 
-        let image = NSImage(size: NSSize(width: width, height: height), flipped: true) { rect in
+        let image = NSImage(size: NSSize(width: width, height: imageHeight), flipped: true) { rect in
             draw(glyph, aspect: aspect, palette: palette, longTurn: longTurn, atX: horizontalPadding)
             let textOrigin = NSPoint(
                 x: horizontalPadding + glyphWidth + glyphTextGap,
@@ -139,7 +147,8 @@ enum SignalHeadRenderer {
         // A transparency layer so the cut-outs erase the glyph only, not
         // whatever the menu bar has behind it.
         context.beginTransparencyLayer(auxiliaryInfo: nil)
-        context.translateBy(x: x, y: (height - glyphHeight) / 2)
+        context.translateBy(x: x, y: (imageHeight - glyphHeight) / 2)
+        context.scaleBy(x: glyphScale, y: glyphScale)
         let pen = Pen(
             context: context,
             state: palette.color(for: aspect),

@@ -11,12 +11,16 @@ railway block signal, whether it's safe to speak:
 - **Blue** — you have the floor, with a running timer for your turn.
 
 The menu bar lamp is the whole display. Clicking it opens a standard menu with
-settings only: sensitivity, which glyph the lamp draws, its colours, and Quit.
+settings only: sensitivity, which glyph the lamp draws, its colours, a
+preview that cycles the lamp through every state, and Quit.
 
 The glyph and colour choices are a trial from the branding work: eight
 drawings (the original lamp, four pets, three railway signals) and three
 palettes, so each can be lived with for a day before one is chosen. Every
-glyph encodes the state in its shape as well as its colour.
+glyph encodes the state in its shape as well as its colour. **Preview
+states** walks the lamp through the whole sequence, clock included, so a
+glyph can be judged without a meeting; it switches itself off when a real
+one starts.
 
 It taps the *output* audio of your meeting app (Zoom, Chrome/Meet, Slack
 huddles) with a CoreAudio process tap for the far end, and the microphone for
