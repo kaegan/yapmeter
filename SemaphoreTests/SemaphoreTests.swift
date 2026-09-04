@@ -302,25 +302,47 @@ final class SignalHeadRendererTests: XCTestCase {
         }
     }
 
+    /// The bubble pets keep the tail on the left while the floor is theirs
+    /// and swing it to the right once it's yours, like chat bubbles do. Only
+    /// the tail reaches the bottom rows of the image, so where the paint
+    /// sits in those rows says which side it's on.
+    func testBubblePetsTurnTheirTailToWhoeverHasTheFloor() {
+        for glyph in [GlyphStyle.petClassic, .petMouth, .petHollowSolid] {
+            for aspect in [Aspect.dark, .occupied, .caution, .preliminary] {
+                let image = SignalHeadRenderer.menuBarImage(for: aspect, speakingSeconds: nil, glyph: glyph)
+                XCTAssertLessThan(tailSide(of: image), 0.5, "\(glyph) \(aspect): tail should be on the left")
+            }
+            let clear = SignalHeadRenderer.menuBarImage(for: .clear, speakingSeconds: nil, glyph: glyph)
+            XCTAssertGreaterThan(tailSide(of: clear), 0.5, "\(glyph) clear: tail should be on the right")
+            let speaking = SignalHeadRenderer.menuBarImage(for: .speaking, speakingSeconds: 42, glyph: glyph)
+            XCTAssertGreaterThan(tailSide(of: speaking), 0.5, "\(glyph) speaking: tail should be on the right")
+        }
+    }
+
+    /// Where the paint in the image's bottom two rows sits, as a fraction of
+    /// the glyph's width: 0 is the far left, 1 the far right.
+    private func tailSide(of image: NSImage) -> CGFloat {
+        let (rep, width, _) = render(image)
+        guard let data = rep.bitmapData else { return 0.5 }
+        // Bottom rows of a bitmap are the highest y; the glyph box is the
+        // first 20pt of a wider image, so only look under it.
+        let glyphWidth = min(width, Int(SignalHeadRenderer.width(of: .petClassic) + 4) * 2)
+        var weighted: CGFloat = 0, total: CGFloat = 0
+        for y in 2..<6 {
+            let row = data + (Int(rep.pixelsHigh) - 1 - y) * rep.bytesPerRow
+            for x in 0..<glyphWidth {
+                let alpha = CGFloat(row[x * 4 + 3])
+                weighted += alpha * CGFloat(x)
+                total += alpha
+            }
+        }
+        return total > 0 ? weighted / total / CGFloat(glyphWidth) : 0.5
+    }
+
     /// Render at 2x, as the menu bar does, and look for any non-transparent
     /// pixel.
     private func paintsAnything(_ image: NSImage) -> Bool {
-        let scale = 2
-        let width = Int(ceil(image.size.width)) * scale
-        let height = Int(ceil(image.size.height)) * scale
-        guard let rep = NSBitmapImageRep(
-            bitmapDataPlanes: nil, pixelsWide: width, pixelsHigh: height,
-            bitsPerSample: 8, samplesPerPixel: 4, hasAlpha: true, isPlanar: false,
-            colorSpaceName: .deviceRGB, bytesPerRow: 0, bitsPerPixel: 0
-        ), let context = NSGraphicsContext(bitmapImageRep: rep) else {
-            return false
-        }
-        rep.size = image.size
-        NSGraphicsContext.saveGraphicsState()
-        NSGraphicsContext.current = context
-        image.draw(in: NSRect(origin: .zero, size: image.size))
-        NSGraphicsContext.restoreGraphicsState()
-
+        let (rep, width, height) = render(image)
         guard let data = rep.bitmapData else { return false }
         for y in 0..<height {
             let row = data + y * rep.bytesPerRow
@@ -329,5 +351,22 @@ final class SignalHeadRendererTests: XCTestCase {
             }
         }
         return false
+    }
+
+    private func render(_ image: NSImage) -> (NSBitmapImageRep, Int, Int) {
+        let scale = 2
+        let width = Int(ceil(image.size.width)) * scale
+        let height = Int(ceil(image.size.height)) * scale
+        let rep = NSBitmapImageRep(
+            bitmapDataPlanes: nil, pixelsWide: width, pixelsHigh: height,
+            bitsPerSample: 8, samplesPerPixel: 4, hasAlpha: true, isPlanar: false,
+            colorSpaceName: .deviceRGB, bytesPerRow: 0, bitsPerPixel: 0
+        )!
+        rep.size = image.size
+        NSGraphicsContext.saveGraphicsState()
+        NSGraphicsContext.current = NSGraphicsContext(bitmapImageRep: rep)
+        image.draw(in: NSRect(origin: .zero, size: image.size))
+        NSGraphicsContext.restoreGraphicsState()
+        return (rep, width, height)
     }
 }

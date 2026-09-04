@@ -129,6 +129,16 @@ enum SignalHeadRenderer {
     /// The aspects collapse to five drawings: the two yellows look the same.
     private enum Phase {
         case dark, them, pause, clear, you
+
+        /// Whether the floor is yours. The bubble pets turn their tail to
+        /// your side (the right, as in any chat app) from the moment it is,
+        /// so the flip itself is the "go" cue.
+        var isYours: Bool {
+            switch self {
+            case .dark, .them, .pause: return false
+            case .clear, .you: return true
+            }
+        }
     }
 
     private static func phase(of aspect: Aspect) -> Phase {
@@ -189,7 +199,8 @@ enum SignalHeadRenderer {
     }
 
     private static func drawPetClassic(_ pen: Pen, _ phase: Phase, longTurn: Bool) {
-        pen.fill(petBody(), pen.state)
+        let body = petBody(yours: phase.isYours)
+        pen.fill(body, pen.state)
         switch phase {
         case .dark:
             pen.cutStroke(sleepEyes(), width: 1.2)
@@ -198,15 +209,16 @@ enum SignalHeadRenderer {
             // A hand over the mouth.
             pen.cut(box(6.3, 9.8, 4.2, 1.7, radius: 0.85))
         case .pause:
-            pen.cut(eyes(6.7, 11.1))
+            // Glancing their way.
+            pen.cut(eyes(5.7, 10.1))
             pen.cutStroke(line(6.7, 10.6, 10.1, 10.6), width: 1.2)
         case .clear:
             pen.cut(eyes(6.2, 10.6))
             pen.cutStroke(petSmile(), width: 1.4)
         case .you where longTurn:
-            pen.cut(petBody())
+            pen.cut(body)
             pen.scaled(1.14, around: petCentre) {
-                pen.fill(petBody(), pen.state)
+                pen.fill(body, pen.state)
                 pen.cutStroke(sleepEyes(), width: 1.2)
                 pen.cutStroke(line(6.4, 10.8, 10.4, 10.8), width: 1.4)
             }
@@ -217,7 +229,7 @@ enum SignalHeadRenderer {
     }
 
     private static func drawPetMouth(_ pen: Pen, _ phase: Phase, longTurn: Bool) {
-        pen.fill(bubbleBody(), pen.state)
+        pen.fill(bubbleBody(yours: phase.isYours), pen.state)
         switch phase {
         case .dark:
             pen.cutStroke(line(6.4, 7.9, 10.4, 7.9), width: 1.3)
@@ -238,32 +250,33 @@ enum SignalHeadRenderer {
     }
 
     private static func drawPetHollowSolid(_ pen: Pen, _ phase: Phase, longTurn: Bool) {
+        let body = petBody(yours: phase.isYours)
         switch phase {
         case .dark:
-            pen.stroke(petBody(), pen.state, width: 1.3)
+            pen.stroke(body, pen.state, width: 1.3)
             pen.stroke(sleepEyes(), pen.state, width: 1.2)
         case .them:
-            pen.stroke(petBody(), pen.state, width: 1.5)
+            pen.stroke(body, pen.state, width: 1.5)
             pen.fill(eyes(6.2, 10.6), pen.state)
             pen.stroke(lines([
                 (6.2, 10.6, 10.6, 10.6), (7.6, 9.7, 7.6, 11.5), (9.2, 9.7, 9.2, 11.5),
             ]), pen.state, width: 1.2)
         case .pause:
-            pen.stroke(petBody(), pen.state, width: 1.5)
+            pen.stroke(body, pen.state, width: 1.5)
             pen.fill(eyes(6.2, 10.6), pen.state)
             pen.fill(circle(8.4, 10.6, 1.1), pen.state)
         case .clear:
-            pen.fill(petBody(), pen.state)
+            pen.fill(body, pen.state)
             pen.cut(eyes(6.2, 10.6))
             pen.cutStroke(petSmile(), width: 1.4)
         case .you where longTurn:
             pen.scaled(1.14, around: petCentre) {
-                pen.fill(petBody(), pen.state)
+                pen.fill(body, pen.state)
                 pen.cutStroke(sleepEyes(), width: 1.2)
                 pen.cutStroke(line(6.4, 10.8, 10.4, 10.8), width: 1.4)
             }
         case .you:
-            pen.fill(petBody(), pen.state)
+            pen.fill(body, pen.state)
             pen.cut(eyes(6.2, 10.6))
             pen.cut(oval(8.4, 10.8, 2.3, 2.0))
         }
@@ -391,20 +404,21 @@ enum SignalHeadRenderer {
     /// Round one's blob, with the tail moved from straight down to the lower
     /// left corner at 45°. Straight down it took a quarter of the box and left
     /// the body at 11 units; on the corner it costs almost no height and the
-    /// body fills 13.
-    private static func petBody() -> NSBezierPath {
+    /// body fills 13. The tail is on their side (left) until the floor is
+    /// yours, then on yours (right), as chat bubbles are.
+    private static func petBody(yours: Bool = false) -> NSBezierPath {
         let path = NSBezierPath()
         // The long way round from the tail's near edge to its far edge, then
         // out to the tip and back.
         path.appendArc(withCenter: petCentre, radius: 6.5, startAngle: 120, endAngle: 150, clockwise: true)
         path.line(to: NSPoint(x: 1.2, y: 15.2))
         path.close()
-        return path
+        return yours ? mirrored(path) : path
     }
 
     /// Round two's bubble: flat top, and the same corner tail, so it reads as
     /// "talk" before it reads as "creature".
-    private static func bubbleBody() -> NSBezierPath {
+    private static func bubbleBody(yours: Bool = false) -> NSBezierPath {
         let path = NSBezierPath()
         let radius: CGFloat = 1.8
         path.move(to: NSPoint(x: 5.4, y: 13.6))
@@ -414,6 +428,13 @@ enum SignalHeadRenderer {
         path.appendArc(from: NSPoint(x: 15.6, y: 1.5), to: NSPoint(x: 15.6, y: 13.6), radius: radius)
         path.appendArc(from: NSPoint(x: 15.6, y: 13.6), to: NSPoint(x: 5.4, y: 13.6), radius: radius)
         path.close()
+        return yours ? mirrored(path) : path
+    }
+
+    /// Flipped left-to-right about the pets' centre line, so the body stays
+    /// exactly where it was and only the tail changes side.
+    private static func mirrored(_ path: NSBezierPath) -> NSBezierPath {
+        path.transform(using: AffineTransform(m11: -1, m12: 0, m21: 0, m22: 1, tX: petCentre.x * 2, tY: 0))
         return path
     }
 
