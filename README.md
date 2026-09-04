@@ -10,6 +10,9 @@ railway block signal, whether it's safe to speak:
 - **Green (clear)** — they've stopped. Go.
 - **Blue** — you have the floor, with a running timer for your turn.
 
+The menu bar lamp is the whole display. Clicking it opens a standard menu with
+settings only: the sensitivity setting and Quit.
+
 It taps the *output* audio of your meeting app (Zoom, Chrome/Meet, Slack
 huddles) with a CoreAudio process tap for the far end, and the microphone for
 you, runs a voice activity detector over each, and drives a small state
@@ -33,8 +36,8 @@ Instead the detector tracks the room's own noise floor (fast to fall, slow to
 rise) and looks for energy a margin above it, requires 150ms before believing
 an onset (which rejects keyboard clicks), and holds for 700ms after (which
 stops it flickering between words). Steady noise — fans, aircon — raises the
-floor and gets absorbed. The popover's **Sensitivity** control moves that
-margin for rooms the default doesn't suit.
+floor and gets absorbed. The menu's **Sensitivity** setting moves that margin
+for rooms the default doesn't suit.
 
 One known limitation: macOS exposes no per-app mute state, so if you're muted
 in Zoom and talking anyway, the turn timer still runs.

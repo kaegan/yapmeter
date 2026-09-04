@@ -6,7 +6,7 @@ struct SemaphoreApp: App {
 
     var body: some Scene {
         MenuBarExtra {
-            PopoverView(engine: engine)
+            SemaphoreMenu(engine: engine)
         } label: {
             Image(nsImage: SignalHeadRenderer.menuBarImage(
                 for: engine.aspect,
@@ -14,6 +14,5 @@ struct SemaphoreApp: App {
             ))
             .onAppear { engine.start() }
         }
-        .menuBarExtraStyle(.window)
     }
 }

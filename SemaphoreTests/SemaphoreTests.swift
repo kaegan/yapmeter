@@ -6,15 +6,19 @@ final class AspectTests: XCTestCase {
         XCTAssertEqual(Aspect.allCases.count, 6)
     }
 
-    func testAspectDisplayNamesAndSubtitlesAreNonEmpty() {
+    func testAspectDisplayNamesAreNonEmpty() {
         for aspect in Aspect.allCases {
             XCTAssertFalse(aspect.displayName.isEmpty)
-            XCTAssertFalse(aspect.subtitle.isEmpty)
         }
     }
 }
 
 final class VoiceActivityDetectorTests: XCTestCase {
+    /// The menu lists these top to bottom, so the order is part of the UI.
+    func testSensitivityIsOrderedLowToHigh() {
+        XCTAssertEqual(VoiceActivityDetector.Sensitivity.allCases, [.low, .normal, .high])
+    }
+
     /// Feed a constant level for a duration at the app's real tick rate.
     private func feed(
         _ detector: inout VoiceActivityDetector,
@@ -92,7 +96,7 @@ final class VoiceActivityDetectorTests: XCTestCase {
         let start = Date(timeIntervalSince1970: 0)
         // Floor bottoms out at -75; a -55 dBFS hum is 20 dB above it but still
         // below the absolute gate, so it must not read as speech.
-        var now = feed(&detector, dBFS: -90, seconds: 10, from: start)
+        let now = feed(&detector, dBFS: -90, seconds: 10, from: start)
         _ = feed(&detector, dBFS: -55, seconds: 2, from: now)
         XCTAssertFalse(detector.isSpeaking)
     }
