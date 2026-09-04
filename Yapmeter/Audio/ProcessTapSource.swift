@@ -32,7 +32,7 @@ final class ProcessTapSource: @unchecked Sendable {
     private var tapID: AudioObjectID = kAudioObjectUnknown
     private var aggregateDeviceID: AudioObjectID = kAudioObjectUnknown
     private var ioProcID: AudioDeviceIOProcID?
-    private let ioQueue = DispatchQueue(label: "fyi.kaegan.semaphore.audio-io", qos: .userInteractive)
+    private let ioQueue = DispatchQueue(label: "fyi.kaegan.yapmeter.audio-io", qos: .userInteractive)
 
     private(set) var isRunning = false
 
@@ -45,7 +45,7 @@ final class ProcessTapSource: @unchecked Sendable {
         stop()
 
         let description = CATapDescription(stereoMixdownOfProcesses: processes)
-        description.name = "Semaphore Tap"
+        description.name = "Yapmeter Tap"
         description.isPrivate = true
         description.muteBehavior = .unmuted
         let uuid = UUID()
@@ -58,7 +58,7 @@ final class ProcessTapSource: @unchecked Sendable {
 
         let outputUID = try MeetingProcessMonitor.defaultOutputDeviceUID()
         let aggregateDescription: [String: Any] = [
-            kAudioAggregateDeviceNameKey as String: "Semaphore Aggregate",
+            kAudioAggregateDeviceNameKey as String: "Yapmeter Aggregate",
             kAudioAggregateDeviceUIDKey as String: UUID().uuidString,
             kAudioAggregateDeviceMainSubDeviceKey as String: outputUID,
             kAudioAggregateDeviceIsPrivateKey as String: true,

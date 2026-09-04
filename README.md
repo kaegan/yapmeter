@@ -1,4 +1,4 @@
-# Semaphore
+# Yapmeter
 
 A macOS menubar app that watches the audio of your meeting and shows you, as a
 railway block signal, whether it's safe to speak:
@@ -52,7 +52,7 @@ in Zoom and talking anyway, the turn timer still runs.
 ./scripts/build.sh Release  # Release build
 ```
 
-Or open in Xcode: `xcodegen generate && open Semaphore.xcodeproj`, then ⌘R.
+Or open in Xcode: `xcodegen generate && open Yapmeter.xcodeproj`, then ⌘R.
 
 ## Permissions
 

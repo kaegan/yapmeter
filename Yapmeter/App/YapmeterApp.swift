@@ -1,7 +1,7 @@
 import SwiftUI
 
 @main
-struct SemaphoreApp: App {
+struct YapmeterApp: App {
     @State private var engine = SignalEngine()
 
     var body: some Scene {

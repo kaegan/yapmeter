@@ -1,5 +1,5 @@
 #!/bin/bash
-# Generate the Xcode project, build Semaphore, install it to ~/Applications,
+# Generate the Xcode project, build Yapmeter, install it to ~/Applications,
 # and launch it. Use this for autonomous verification; use Xcode (⌘R) for
 # interactive debugging.
 set -euo pipefail
@@ -7,7 +7,7 @@ cd "$(dirname "$0")/.."
 
 CONFIGURATION="${1:-Debug}"
 DERIVED_DATA="build/DerivedData"
-APP_NAME="Semaphore.app"
+APP_NAME="Yapmeter.app"
 INSTALL_DIR="$HOME/Applications"
 
 echo "==> Generating Xcode project"
@@ -15,8 +15,8 @@ xcodegen generate
 
 echo "==> Building ($CONFIGURATION)"
 xcodebuild \
-  -project Semaphore.xcodeproj \
-  -scheme Semaphore \
+  -project Yapmeter.xcodeproj \
+  -scheme Yapmeter \
   -configuration "$CONFIGURATION" \
   -derivedDataPath "$DERIVED_DATA" \
   build
@@ -35,4 +35,4 @@ cp -R "$BUILT_APP" "$INSTALL_DIR/$APP_NAME"
 echo "==> Launching"
 open "$INSTALL_DIR/$APP_NAME"
 
-echo "==> Done. Bundle ID: fyi.kaegan.semaphore"
+echo "==> Done. Bundle ID: fyi.kaegan.yapmeter"

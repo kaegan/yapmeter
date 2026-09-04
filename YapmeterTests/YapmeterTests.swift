@@ -1,5 +1,5 @@
 import XCTest
-@testable import Semaphore
+@testable import Yapmeter
 
 final class AspectTests: XCTestCase {
     func testAspectHasSixStates() {

@@ -26,7 +26,7 @@ struct PopoverView: View {
 
     private var header: some View {
         HStack {
-            Text("SEMAPHORE")
+            Text("YAPMETER")
                 .font(.system(.caption, design: .monospaced))
                 .foregroundStyle(.secondary)
             Spacer()
@@ -92,7 +92,7 @@ struct PopoverView: View {
                          floor: engine.noiseFloors.nearEnd, isSpeaking: engine.nearEndSpeaking)
             }
 
-            Button("Quit Semaphore") {
+            Button("Quit Yapmeter") {
                 NSApp.terminate(nil)
             }
             .buttonStyle(.plain)
