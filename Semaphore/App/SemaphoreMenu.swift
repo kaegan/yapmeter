@@ -27,7 +27,20 @@ struct SemaphoreMenu: View {
         // For calls detection can't see (FaceTime, for one). Named for what
         // it does rather than "manual mode", because what it does is the
         // caveat: anything the Mac plays will drive the signal while it's on.
-        Toggle("Listen to All Audio", isOn: listenToAllAudio)
+        // The timed options exist so it can't be left on by accident.
+        Menu(engine.audioMonitor.listenToAllAudio ? "Listening to All Audio" : "Listen to All Audio") {
+            if engine.audioMonitor.listenToAllAudio {
+                Text(untilText)
+                Button("Turn Off") { engine.audioMonitor.stopListeningToAllAudio() }
+                Divider()
+            }
+            ForEach(Self.listenDurations, id: \.minutes) { option in
+                Button(option.label) {
+                    engine.audioMonitor.listenToAllAudio(for: TimeInterval(option.minutes * 60))
+                }
+            }
+            Button("Until Turned Off") { engine.audioMonitor.listenToAllAudio(for: nil) }
+        }
         Divider()
         // An LSUIElement app has no app menu, so this is the only ⌘Q there is.
         Button("Quit Semaphore") { NSApp.terminate(nil) }
@@ -43,11 +56,17 @@ struct SemaphoreMenu: View {
         )
     }
 
-    private var listenToAllAudio: Binding<Bool> {
-        Binding(
-            get: { engine.audioMonitor.listenToAllAudio },
-            set: { engine.audioMonitor.listenToAllAudio = $0 }
-        )
+    /// The usual meeting lengths.
+    private static let listenDurations: [(minutes: Int, label: String)] = [
+        (15, "For 15 Minutes"),
+        (30, "For 30 Minutes"),
+        (45, "For 45 Minutes"),
+        (60, "For 1 Hour"),
+    ]
+
+    private var untilText: String {
+        guard let until = engine.audioMonitor.listenToAllAudioUntil else { return "On until turned off" }
+        return "On until \(until.formatted(date: .omitted, time: .shortened))"
     }
 
     private func problemText(for status: AudioMonitor.Status) -> String? {

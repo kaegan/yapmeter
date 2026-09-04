@@ -1,5 +1,6 @@
 import Foundation
 import Observation
+import os
 
 /// The app's brain. Samples both audio ends at a steady rate, runs a voice
 /// activity detector over each, feeds the result to the signal state machine,
@@ -39,6 +40,8 @@ final class SignalEngine {
     private var lastNearSpeechAt: Date?
 
     private static let sensitivityKey = "sensitivity"
+    private static let logger = Logger(subsystem: "fyi.kaegan.semaphore", category: "signal")
+    private var lastLevelLogAt = Date.distantPast
     private static let tickInterval: TimeInterval = 1.0 / 50.0
 
     init() {
@@ -52,11 +55,15 @@ final class SignalEngine {
     func start() {
         guard tickTimer == nil else { return }
         audioMonitor.start()
-        tickTimer = Timer.scheduledTimer(withTimeInterval: Self.tickInterval, repeats: true) { [weak self] _ in
+        let timer = Timer(timeInterval: Self.tickInterval, repeats: true) { [weak self] _ in
             Task { @MainActor in
                 self?.tick()
             }
         }
+        // Common modes, or the signal freezes while the menu is open: a
+        // default-mode timer doesn't fire during menu tracking.
+        RunLoop.main.add(timer, forMode: .common)
+        tickTimer = timer
     }
 
     func stop() {
@@ -82,9 +89,12 @@ final class SignalEngine {
             return
         }
 
+        // An end that hasn't delivered audio yet keeps its last decision
+        // (false, after a reset) rather than being fed silence it never heard.
         let levels = audioMonitor.sampleLevels()
-        let far = farEndDetector.update(dBFS: levels.farEnd, now: now)
-        let near = nearEndDetector.update(dBFS: levels.nearEnd, now: now)
+        let far = levels.farEnd.map { farEndDetector.update(dBFS: $0, now: now) } ?? farEndDetector.isSpeaking
+        let near = levels.nearEnd.map { nearEndDetector.update(dBFS: $0, now: now) } ?? nearEndDetector.isSpeaking
+        logLevels(levels, far: far, near: near, now: now)
 
         update(\.farEndSpeaking, to: far)
         update(\.nearEndSpeaking, to: near)
@@ -92,6 +102,19 @@ final class SignalEngine {
         update(\.aspect, to: stateMachine.aspect(
             meetingActive: true, nearSpeaking: near, farSpeaking: far, now: now
         ))
+    }
+
+    /// Once a second, for when the detector misbehaves in a room you can't
+    /// reproduce in a test. Debug level, so it only shows under
+    /// `log stream --predicate 'subsystem == "fyi.kaegan.semaphore"' --level debug`.
+    private func logLevels(_ levels: AudioMonitor.Levels, far: Bool, near: Bool, now: Date) {
+        guard now.timeIntervalSince(lastLevelLogAt) >= 1 else { return }
+        lastLevelLogAt = now
+        let nearText = levels.nearEnd.map { String(format: "%.1f", $0) } ?? "none"
+        let farText = levels.farEnd.map { String(format: "%.1f", $0) } ?? "none"
+        Self.logger.debug(
+            "near \(nearText, privacy: .public) dBFS floor \(self.nearEndDetector.noiseFloor, format: .fixed(precision: 1), privacy: .public) speaking \(near, privacy: .public) | far \(farText, privacy: .public) dBFS floor \(self.farEndDetector.noiseFloor, format: .fixed(precision: 1), privacy: .public) speaking \(far, privacy: .public)"
+        )
     }
 
     private func updateTurnTimer(nearSpeaking: Bool, now: Date) {

@@ -11,7 +11,7 @@ railway block signal, whether it's safe to speak:
 - **Blue** — you have the floor, with a running timer for your turn.
 
 The menu bar lamp is the whole display. When there's no meeting it shows a
-small semaphore post instead, tinted like the system's own menu bar icons.
+pair of speech bubbles instead, tinted like the system's own menu bar icons.
 Clicking it opens a standard menu with settings only: sensitivity, a manual
 override, and Quit.
 
@@ -30,10 +30,11 @@ is the fallback when no process reports input, which covers a Zoom lobby. When
 the meeting ends both capture paths are torn down, so the app isn't holding an
 aggregate audio device or the mic open all day.
 
-Calls the detector can't see (FaceTime is one) can be handled by hand:
-**Listen to All Audio** in the menu taps everything the Mac is playing, plus
-the mic, until you switch it off. Music or a video will drive the signal too
-while it's on, and it resets when the app relaunches.
+Calls the detector can't see (FaceTime is one) can be handled by hand: the
+**Listen to All Audio** submenu taps everything the Mac is playing, plus the
+mic, for 15, 30, 45 or 60 minutes, or until you switch it off. Music or a
+video will drive the signal too while it's on, and it resets when the app
+relaunches.
 
 ## Voice detection and noise
 

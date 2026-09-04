@@ -114,6 +114,7 @@ final class ProcessTapSource: @unchecked Sendable {
         guard isRunning else { return }
         tearDownDevices()
         isRunning = false
+        levelMeter.reset()
     }
 
     deinit {

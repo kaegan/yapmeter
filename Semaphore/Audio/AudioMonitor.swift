@@ -22,8 +22,10 @@ final class AudioMonitor {
     }
 
     struct Levels {
-        let farEnd: Float
-        let nearEnd: Float
+        /// Nil until that end has delivered its first buffer; see
+        /// `LevelMeter.hasReceivedAudio`.
+        let farEnd: Float?
+        let nearEnd: Float?
     }
 
     private(set) var status: Status = .waitingForMeeting
@@ -34,11 +36,40 @@ final class AudioMonitor {
     /// can't see (FaceTime, a browser we don't list, a phone mirrored to the
     /// desktop). Never persisted: forgetting it's on would leave the mic and
     /// a system-audio tap open all day, so it resets on relaunch.
-    var listenToAllAudio = false {
+    private(set) var listenToAllAudio = false {
         didSet {
             guard listenToAllAudio != oldValue else { return }
             applyListenToAllAudio()
         }
+    }
+
+    /// When a timed override switches itself off, or nil for an open-ended
+    /// one (or none).
+    private(set) var listenToAllAudioUntil: Date?
+    private var listenTimer: Timer?
+
+    /// Switch the override on, for a duration matched to the meeting or
+    /// open-ended with nil. Picking a new duration while already on just
+    /// moves the deadline; capture keeps running.
+    func listenToAllAudio(for duration: TimeInterval?) {
+        listenTimer?.invalidate()
+        listenTimer = nil
+        listenToAllAudioUntil = duration.map { Date().addingTimeInterval($0) }
+        if let duration {
+            listenTimer = Timer.scheduledTimer(withTimeInterval: duration, repeats: false) { [weak self] _ in
+                Task { @MainActor in
+                    self?.stopListeningToAllAudio()
+                }
+            }
+        }
+        listenToAllAudio = true
+    }
+
+    func stopListeningToAllAudio() {
+        listenTimer?.invalidate()
+        listenTimer = nil
+        listenToAllAudioUntil = nil
+        listenToAllAudio = false
     }
 
     private let tapSource = ProcessTapSource()
@@ -75,7 +106,11 @@ final class AudioMonitor {
 
     /// Peak level on each end since the last call, for the voice detectors.
     func sampleLevels() -> Levels {
-        Levels(farEnd: tapSource.levelMeter.consumePeak(), nearEnd: micSource.levelMeter.consumePeak())
+        Levels(farEnd: level(from: tapSource.levelMeter), nearEnd: level(from: micSource.levelMeter))
+    }
+
+    private func level(from meter: LevelMeter) -> Float? {
+        meter.hasReceivedAudio ? meter.consumePeak() : nil
     }
 
     /// A meeting app with the microphone open is in a call. Output alone isn't
@@ -151,6 +186,7 @@ final class AudioMonitor {
 
             // Both permission prompts fire here on first run, and both block
             // until the user answers, so keep them off the main thread.
+            let startedAt = Date()
             do {
                 try await Task.detached {
                     if let processIDs {
@@ -164,6 +200,7 @@ final class AudioMonitor {
                 self.status = .error(String(describing: error))
                 return
             }
+            Self.logger.debug("Process tap started in \(Date().timeIntervalSince(startedAt), format: .fixed(precision: 2), privacy: .public)s")
 
             // The meeting can end while we're waiting on a permission dialog.
             guard self.isMeetingActive else {
@@ -192,6 +229,7 @@ final class AudioMonitor {
                 Self.logger.error("Microphone unavailable: \(micFailure, privacy: .public)")
                 self.status = .microphoneUnavailable(micFailure)
             } else {
+                Self.logger.debug("Microphone started \(Date().timeIntervalSince(startedAt), format: .fixed(precision: 2), privacy: .public)s after capture began")
                 self.status = .running(processBundleIDs: bundleIDs)
             }
         }

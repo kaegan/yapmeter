@@ -64,31 +64,16 @@ enum SignalHeadRenderer {
         return image
     }
 
-    /// No meeting: the app's namesake, a semaphore post with its arm out
-    /// horizontal, drawn as a template image so the menu bar tints it like
-    /// its own icons (and highlights it when the menu is open) rather than
-    /// leaving a lone grey ring that reads as "broken".
+    /// No meeting: two speech bubbles, the conversation the signal is for,
+    /// as a template image so the menu bar tints it like its own icons (and
+    /// highlights it when the menu is open). A lone grey ring, the previous
+    /// idle state, read as "broken" rather than "waiting".
     private static func darkSignalImage() -> NSImage {
-        let width: CGFloat = 17
-        let image = NSImage(size: NSSize(width: width, height: height), flipped: false) { _ in
-            NSColor.black.setFill()
-            // Post, from the base to just shy of the top.
-            NSBezierPath(
-                roundedRect: NSRect(x: 3, y: 1.5, width: 2.2, height: 15),
-                xRadius: 1.1, yRadius: 1.1
-            ).fill()
-            // Arm, pivoting at the post's head and reaching out to the right.
-            NSBezierPath(
-                roundedRect: NSRect(x: 3, y: 11.5, width: 12, height: 3),
-                xRadius: 1.5, yRadius: 1.5
-            ).fill()
-            // Base, so it stands on something.
-            NSBezierPath(
-                roundedRect: NSRect(x: 0.5, y: 1, width: 7.2, height: 2),
-                xRadius: 1, yRadius: 1
-            ).fill()
-            return true
-        }
+        let configuration = NSImage.SymbolConfiguration(pointSize: 13, weight: .medium)
+        // Force-unwrapped: the symbol has shipped since macOS 11 and the
+        // deployment target is 14.2.
+        let image = NSImage(systemSymbolName: "bubble.left.and.bubble.right", accessibilityDescription: nil)!
+            .withSymbolConfiguration(configuration)!
         image.isTemplate = true
         return image
     }

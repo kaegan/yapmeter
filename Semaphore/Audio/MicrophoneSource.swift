@@ -73,6 +73,7 @@ final class MicrophoneSource: @unchecked Sendable {
         engine.inputNode.removeTap(onBus: 0)
         engine.stop()
         isRunning = false
+        levelMeter.reset()
     }
 
     deinit {
