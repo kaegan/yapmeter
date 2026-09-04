@@ -1,80 +1,111 @@
 import AppKit
 
-/// Renders each `Aspect` as a small horizontal signal head — four lamps,
-/// the active one(s) lit with a soft glow — for use as the menu bar status
-/// item image.
+/// Renders the menu bar status image: a single lamp in the aspect's colour,
+/// plus your turn's elapsed time when you're the one talking.
+///
+/// One lamp, not the four-lamp head. At 18pt the full head is four 12pt lamps
+/// with three of them dark, which reads as a smudge rather than a signal. The
+/// head belongs in the popover, where there's room for it.
 ///
 /// `MenuBarExtra` in `.window` style tends to force template (monochrome)
 /// rendering on SwiftUI-provided label content, so we draw and cache real
-/// `NSImage`s with `isTemplate = false` ourselves. If that still gets
-/// flattened to template by SwiftUI, the fallback is a raw `NSStatusItem`
-/// via `NSApplicationDelegateAdaptor` (see SemaphoreApp.swift comment).
+/// `NSImage`s with `isTemplate = false` ourselves.
 @MainActor
 enum SignalHeadRenderer {
-    private static var cache: [Aspect: NSImage] = [:]
+    private static var lampCache: [Aspect: NSImage] = [:]
 
-    static func image(for aspect: Aspect) -> NSImage {
-        if let cached = cache[aspect] {
-            return cached
+    private static let height: CGFloat = 18
+    private static let lampDiameter: CGFloat = 11
+    private static let horizontalPadding: CGFloat = 2
+    private static let lampTextGap: CGFloat = 5
+
+    static func menuBarImage(for aspect: Aspect, speakingSeconds: Int?) -> NSImage {
+        guard let speakingSeconds else {
+            return lampOnlyImage(for: aspect)
         }
-        let image = render(aspect)
-        cache[aspect] = image
-        return image
+        return lampWithTimeImage(for: aspect, label: timeLabel(speakingSeconds))
     }
 
-    private static func render(_ aspect: Aspect) -> NSImage {
-        let size = NSSize(width: 44, height: 18)
-        let image = NSImage(size: size, flipped: false) { rect in
-            let lampCount = 4
-            let lampDiameter: CGFloat = 12
-            let spacing = (rect.width - (CGFloat(lampCount) * lampDiameter)) / CGFloat(lampCount + 1)
-            let y = (rect.height - lampDiameter) / 2
-
-            for index in 0..<lampCount {
-                let x = spacing + CGFloat(index) * (lampDiameter + spacing)
-                let lampRect = NSRect(x: x, y: y, width: lampDiameter, height: lampDiameter)
-                let isLit = litLampIndices(for: aspect).contains(index)
-                draw(lampRect: lampRect, color: litColor(for: aspect), isLit: isLit)
-            }
-            return true
-        }
-        image.isTemplate = false
-        return image
+    /// mm:ss, no hours: a turn long enough to need them has bigger problems.
+    static func timeLabel(_ seconds: Int) -> String {
+        let clamped = max(0, seconds)
+        return String(format: "%d:%02d", clamped / 60, clamped % 60)
     }
 
-    /// Which of the 4 lamp positions are lit for a given aspect.
-    /// occupied = lamp 0 (red), caution = lamp 1 (single yellow),
-    /// preliminary = lamps 1+2 (double yellow), clear = lamp 3 (green).
-    private static func litLampIndices(for aspect: Aspect) -> Set<Int> {
+    static func color(for aspect: Aspect) -> NSColor {
         switch aspect {
-        case .dark: return []
-        case .occupied: return [0]
-        case .caution: return [1]
-        case .preliminary: return [1, 2]
-        case .clear: return [3]
-        }
-    }
-
-    private static func litColor(for aspect: Aspect) -> NSColor {
-        switch aspect {
-        case .dark: return .clear
+        case .dark: return .tertiaryLabelColor
+        // Blue, not another lamp colour: "you" needs to be unmistakable
+        // against the red/yellow/green of the block itself.
+        case .speaking: return .systemBlue
         case .occupied: return .systemRed
         case .caution, .preliminary: return .systemYellow
         case .clear: return .systemGreen
         }
     }
 
-    private static func draw(lampRect: NSRect, color: NSColor, isLit: Bool) {
-        if isLit {
-            // Soft glow behind the lamp.
-            let glowRect = lampRect.insetBy(dx: -3, dy: -3)
-            if let glow = NSGradient(starting: color.withAlphaComponent(0.55), ending: color.withAlphaComponent(0.0)) {
-                glow.draw(in: NSBezierPath(ovalIn: glowRect), relativeCenterPosition: .zero)
-            }
-            color.setFill()
-        } else {
-            NSColor.white.withAlphaComponent(0.18).setFill()
+    // MARK: - Drawing
+
+    private static func lampOnlyImage(for aspect: Aspect) -> NSImage {
+        if let cached = lampCache[aspect] { return cached }
+        let width = lampDiameter + horizontalPadding * 2
+        let image = NSImage(size: NSSize(width: width, height: height), flipped: false) { _ in
+            draw(lamp: lampRect(atX: horizontalPadding), aspect: aspect)
+            return true
         }
-        NSBezierPath(ovalIn: lampRect).fill()
+        image.isTemplate = false
+        lampCache[aspect] = image
+        return image
+    }
+
+    /// Not cached: the label changes every second, and caching per-label would
+    /// grow a dictionary entry per second of every meeting.
+    private static func lampWithTimeImage(for aspect: Aspect, label: String) -> NSImage {
+        let attributes: [NSAttributedString.Key: Any] = [
+            .font: NSFont.monospacedDigitSystemFont(ofSize: 11, weight: .medium),
+            .foregroundColor: color(for: aspect),
+        ]
+        let text = NSAttributedString(string: label, attributes: attributes)
+        let textSize = text.size()
+        let width = horizontalPadding * 2 + lampDiameter + lampTextGap + ceil(textSize.width)
+
+        let image = NSImage(size: NSSize(width: width, height: height), flipped: false) { rect in
+            draw(lamp: lampRect(atX: horizontalPadding), aspect: aspect)
+            let textOrigin = NSPoint(
+                x: horizontalPadding + lampDiameter + lampTextGap,
+                y: (rect.height - textSize.height) / 2
+            )
+            text.draw(at: textOrigin)
+            return true
+        }
+        image.isTemplate = false
+        return image
+    }
+
+    private static func lampRect(atX x: CGFloat) -> NSRect {
+        NSRect(x: x, y: (height - lampDiameter) / 2, width: lampDiameter, height: lampDiameter)
+    }
+
+    /// A lit lamp is a filled disc with a soft glow behind it. A dark signal
+    /// draws as an outline only, so the status item still has something to
+    /// look at and to click when no meeting is running.
+    private static func draw(lamp rect: NSRect, aspect: Aspect) {
+        let path = NSBezierPath(ovalIn: rect)
+        guard aspect != .dark else {
+            NSColor.tertiaryLabelColor.setStroke()
+            path.lineWidth = 1.2
+            path.stroke()
+            return
+        }
+        let lampColor = color(for: aspect)
+        let glowRect = rect.insetBy(dx: -3, dy: -3)
+        if let glow = NSGradient(
+            starting: lampColor.withAlphaComponent(0.55),
+            ending: lampColor.withAlphaComponent(0.0)
+        ) {
+            glow.draw(in: NSBezierPath(ovalIn: glowRect), relativeCenterPosition: .zero)
+        }
+        lampColor.setFill()
+        path.fill()
     }
 }
