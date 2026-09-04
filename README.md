@@ -9,10 +9,18 @@ shows you, as a railway block signal, whether it's safe to speak:
 - **Green (clear)** — they've stopped. Go.
 
 It works by tapping the *output* audio of your meeting app (Zoom, Chrome/Meet,
-Slack huddles) with a CoreAudio process tap, running a lightweight voice
+Slack huddles, Teams) with a CoreAudio process tap, running a lightweight voice
 activity detector on it, and driving a small state machine. Nothing is
 recorded, transcribed, or leaves your Mac — it only ever looks at whether
 there's speech-shaped energy in the signal.
+
+It arms itself: no calendar, no integrations. CoreAudio publishes a
+process object per audio client, and Semaphore watches
+`kAudioProcessPropertyIsRunningInput` on the ones belonging to a known
+meeting app. A meeting app holding the microphone open *is* the meeting —
+Chrome playing YouTube has output but no input, and Chrome sitting idle has
+neither. Both edges are debounced (2s to arm, 12s of grace to disarm) so a
+device switch mid-call doesn't drop the signal.
 
 ## Requirements
 
@@ -35,6 +43,8 @@ Screen & System Audio Recording).
 
 ## Status
 
-Milestone 1: menu bar signal head + popover shell, cycling through all five
-aspects on a timer to prove the UI works. Audio capture and real
-voice-activity detection land in the next milestones — see the project plan.
+Milestones 1–2 plus meeting detection: menu bar signal head + popover shell
+(still cycling aspects on a demo timer), a CoreAudio process tap with a live
+dBFS readout, and automatic arming when a meeting starts. Real
+voice-activity detection and the signal state machine land next — see the
+project plan.

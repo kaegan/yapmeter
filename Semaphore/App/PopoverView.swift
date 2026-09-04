@@ -43,9 +43,19 @@ struct PopoverView: View {
     private var audioDebugSection: some View {
         let monitor = appState.audioMonitor
         VStack(alignment: .leading, spacing: 6) {
+            Text("MEETING")
+                .font(.system(.caption2, design: .monospaced))
+                .foregroundStyle(.secondary)
+
+            Text(meetingText(for: monitor.detector.state))
+                .font(.system(.caption, design: .monospaced))
+                .foregroundStyle(monitor.currentMeeting == nil ? .secondary : .primary)
+                .fixedSize(horizontal: false, vertical: true)
+
             Text("AUDIO TAP (debug)")
                 .font(.system(.caption2, design: .monospaced))
                 .foregroundStyle(.secondary)
+                .padding(.top, 4)
 
             Text(statusText(for: monitor.status))
                 .font(.system(.caption, design: .monospaced))
@@ -79,10 +89,19 @@ struct PopoverView: View {
         .frame(height: 6)
     }
 
+    private func meetingText(for state: MeetingDetector.State) -> String {
+        switch state {
+        case .notRunning: return "detection off"
+        case .noMeeting: return "no meeting - waiting"
+        case .inMeeting(let meeting): return "in a meeting: \(meeting.appNames.joined(separator: ", "))"
+        }
+    }
+
     private func statusText(for status: AudioMonitor.Status) -> String {
         switch status {
         case .idle: return "not running"
-        case .noMeetingAppFound: return "no Zoom/Chrome/Slack audio process found"
+        case .waitingForMeeting: return "armed - starts when a meeting does"
+        case .noMeetingAppFound: return "no meeting app audio process found"
         case .starting: return "requesting audio access…"
         case .running(let bundleIDs): return "tapping: \(bundleIDs.joined(separator: ", "))"
         case .error(let message): return "error: \(message)"

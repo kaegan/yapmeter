@@ -16,6 +16,7 @@ final class AppState {
 
     init() {
         startDemoCycle()
+        audioMonitor.startAutomaticDetection()
     }
 
     private func startDemoCycle() {
