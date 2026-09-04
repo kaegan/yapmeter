@@ -1,107 +1,146 @@
 import SwiftUI
 
-/// The departure-board style popover shown when the menu bar item is
-/// clicked. Milestone 1 shows the current aspect only; Milestone 2 adds a
-/// debug section to prove the CoreAudio tap is alive before Milestone 3
-/// wires it to the signal state machine and this debug section goes away.
+/// The departure-board popover shown when the menu bar item is clicked:
+/// the full signal head, what it means, your turn timer, and the one control
+/// worth exposing (how readily we call something speech).
 struct PopoverView: View {
-    @Bindable var appState: AppState
+    @Bindable var engine: SignalEngine
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 12) {
+        VStack(alignment: .leading, spacing: 14) {
+            header
+            SignalHeadView(aspect: engine.aspect)
+                .frame(maxWidth: .infinity, alignment: .center)
+            statusLines
+            if engine.speakingSeconds != nil {
+                turnTimer
+            }
+            Divider()
+            sensitivityControl
+            Divider()
+            footer
+        }
+        .padding(16)
+        .frame(width: 280)
+    }
+
+    private var header: some View {
+        HStack {
             Text("SEMAPHORE")
                 .font(.system(.caption, design: .monospaced))
                 .foregroundStyle(.secondary)
+            Spacer()
+            Text(engine.audioMonitor.isMeetingActive ? "IN SERVICE" : "STANDBY")
+                .font(.system(size: 9, design: .monospaced))
+                .foregroundStyle(.tertiary)
+        }
+    }
 
-            Text(appState.aspect.displayName)
-                .font(.system(.title2, design: .monospaced, weight: .bold))
-                .foregroundStyle(color(for: appState.aspect))
-
-            Divider()
-
-            Text(appState.aspect == .caution ? "Mind the gap." : " ")
+    private var statusLines: some View {
+        VStack(alignment: .leading, spacing: 3) {
+            Text(engine.aspect.displayName)
+                .font(.system(.title3, design: .monospaced, weight: .bold))
+                .foregroundStyle(color(for: engine.aspect))
+            Text(engine.aspect.subtitle)
                 .font(.system(.caption, design: .monospaced))
                 .foregroundStyle(.secondary)
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+    }
 
-            Divider()
+    private var turnTimer: some View {
+        HStack(alignment: .firstTextBaseline, spacing: 8) {
+            Text(SignalHeadRenderer.timeLabel(engine.speakingSeconds ?? 0))
+                .font(.system(size: 28, weight: .light, design: .monospaced))
+                .monospacedDigit()
+                .foregroundStyle(.blue)
+            Text("this turn")
+                .font(.system(.caption2, design: .monospaced))
+                .foregroundStyle(.secondary)
+        }
+    }
 
-            audioDebugSection
+    private var sensitivityControl: some View {
+        VStack(alignment: .leading, spacing: 5) {
+            Text("SENSITIVITY")
+                .font(.system(size: 9, design: .monospaced))
+                .foregroundStyle(.secondary)
+            Picker("", selection: $engine.sensitivity) {
+                ForEach(VoiceActivityDetector.Sensitivity.allCases, id: \.self) { level in
+                    Text(level.displayName).tag(level)
+                }
+            }
+            .pickerStyle(.segmented)
+            .labelsHidden()
+            Text("Lower this in a noisy room.")
+                .font(.system(size: 9, design: .monospaced))
+                .foregroundStyle(.tertiary)
+        }
+    }
 
-            Divider()
+    private var footer: some View {
+        VStack(alignment: .leading, spacing: 6) {
+            Text(statusText(for: engine.audioMonitor.status))
+                .font(.system(size: 9, design: .monospaced))
+                .foregroundStyle(.tertiary)
+                .fixedSize(horizontal: false, vertical: true)
+
+            if engine.audioMonitor.isMeetingActive {
+                levelRow(label: "them", dBFS: engine.audioMonitor.farEndDBFS,
+                         floor: engine.noiseFloors.farEnd, isSpeaking: engine.farEndSpeaking)
+                levelRow(label: "you ", dBFS: engine.audioMonitor.nearEndDBFS,
+                         floor: engine.noiseFloors.nearEnd, isSpeaking: engine.nearEndSpeaking)
+            }
 
             Button("Quit Semaphore") {
                 NSApp.terminate(nil)
             }
             .buttonStyle(.plain)
             .font(.system(.caption, design: .monospaced))
-        }
-        .padding(16)
-        .frame(width: 260)
-    }
-
-    @ViewBuilder
-    private var audioDebugSection: some View {
-        let monitor = appState.audioMonitor
-        VStack(alignment: .leading, spacing: 6) {
-            Text("AUDIO TAP (debug)")
-                .font(.system(.caption2, design: .monospaced))
-                .foregroundStyle(.secondary)
-
-            Text(statusText(for: monitor.status))
-                .font(.system(.caption, design: .monospaced))
-                .foregroundStyle(.secondary)
-                .fixedSize(horizontal: false, vertical: true)
-
-            if case .running = monitor.status {
-                Text(String(format: "%.1f dBFS", monitor.dBFS))
-                    .font(.system(.caption, design: .monospaced))
-                levelBar(dBFS: monitor.dBFS)
-            }
-
-            Button(toggleButtonTitle(for: monitor.status)) {
-                monitor.toggle()
-            }
-            .buttonStyle(.plain)
-            .font(.system(.caption, design: .monospaced))
-            .disabled(monitor.status == .starting)
+            .padding(.top, 2)
         }
     }
 
-    private func levelBar(dBFS: Float) -> some View {
-        // Map -60...0 dBFS onto a 0...1 fill; below -60 reads as silence.
-        let fraction = max(0, min(1, (dBFS + 60) / 60))
-        return GeometryReader { proxy in
-            ZStack(alignment: .leading) {
-                Capsule().fill(.quaternary)
-                Capsule().fill(.green).frame(width: proxy.size.width * CGFloat(fraction))
+    /// Level bar with the detector's current noise floor marked on it, so it's
+    /// visible why something did or didn't count as speech.
+    private func levelRow(label: String, dBFS: Float, floor: Float, isSpeaking: Bool) -> some View {
+        HStack(spacing: 6) {
+            Text(label)
+                .font(.system(size: 9, design: .monospaced))
+                .foregroundStyle(isSpeaking ? .primary : .tertiary)
+            GeometryReader { proxy in
+                ZStack(alignment: .leading) {
+                    Capsule().fill(.quaternary)
+                    Capsule()
+                        .fill(isSpeaking ? Color.green : Color.secondary)
+                        .frame(width: proxy.size.width * CGFloat(fraction(of: dBFS)))
+                    Rectangle()
+                        .fill(.orange.opacity(0.7))
+                        .frame(width: 1)
+                        .offset(x: proxy.size.width * CGFloat(fraction(of: floor)))
+                }
             }
+            .frame(height: 5)
         }
-        .frame(height: 6)
+    }
+
+    /// Map -70...0 dBFS onto 0...1. Wider than a normal meter because the
+    /// noise floor marker lives down in the -60s.
+    private func fraction(of dBFS: Float) -> Float {
+        max(0, min(1, (dBFS + 70) / 70))
     }
 
     private func statusText(for status: AudioMonitor.Status) -> String {
         switch status {
-        case .idle: return "not running"
-        case .noMeetingAppFound: return "no Zoom/Chrome/Slack audio process found"
+        case .waitingForMeeting: return "watching for Zoom / Meet / Slack audio"
         case .starting: return "requesting audio access…"
         case .running(let bundleIDs): return "tapping: \(bundleIDs.joined(separator: ", "))"
+        case .microphoneUnavailable(let message): return "no turn timer — \(message)"
         case .error(let message): return "error: \(message)"
         }
     }
 
-    private func toggleButtonTitle(for status: AudioMonitor.Status) -> String {
-        if case .running = status {
-            return "Stop Tap"
-        }
-        return "Start Tap"
-    }
-
     private func color(for aspect: Aspect) -> Color {
-        switch aspect {
-        case .dark: return .secondary
-        case .occupied: return .red
-        case .caution, .preliminary: return .yellow
-        case .clear: return .green
-        }
+        Color(nsColor: SignalHeadRenderer.color(for: aspect))
     }
 }

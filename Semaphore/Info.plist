@@ -26,6 +26,8 @@
 	<true/>
 	<key>NSPrincipalClass</key>
 	<string>NSApplication</string>
+	<key>NSMicrophoneUsageDescription</key>
+	<string>Semaphore listens to your microphone so it can tell when you are the one speaking and time your turn. Nothing is recorded, transcribed, or sent anywhere.</string>
 	<key>NSAudioCaptureUsageDescription</key>
 	<string>Semaphore listens to the audio your meeting app plays so it can tell when the other person is speaking. Nothing is recorded, transcribed, or sent anywhere.</string>
 </dict>

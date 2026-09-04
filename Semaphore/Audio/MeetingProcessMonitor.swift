@@ -20,15 +20,19 @@ enum MeetingProcessMonitor {
         let pid: pid_t
         let bundleID: String
         let isRunningOutput: Bool
+        /// The process has the microphone open. This is the signal that
+        /// distinguishes a live call from a Chrome tab playing a video.
+        let isRunningInput: Bool
     }
 
     enum MonitorError: Error {
         case propertyReadFailed(OSStatus, AudioObjectPropertySelector)
     }
 
-    /// All currently-connected CoreAudio client processes matching our
-    /// target apps, whether or not they're actively outputting audio right
-    /// now (a Zoom call sitting in a lobby still counts).
+    /// All currently-connected CoreAudio client processes matching our target
+    /// apps, each tagged with whether it currently has audio output and/or
+    /// microphone input running. Callers decide what counts as a live meeting;
+    /// see `AudioMonitor.isLiveMeeting(_:)`.
     static func matchingProcesses() throws -> [MatchedProcess] {
         let allProcessIDs = try readProcessObjectList()
         var matches: [MatchedProcess] = []
@@ -37,7 +41,14 @@ enum MeetingProcessMonitor {
             guard targetBundleIDPrefixes.contains(where: { bundleID.hasPrefix($0) }) else { continue }
             let pid = (try? readPID(of: objectID)) ?? 0
             let isRunningOutput = (try? readIsRunningOutput(of: objectID)) ?? false
-            matches.append(MatchedProcess(id: objectID, pid: pid, bundleID: bundleID, isRunningOutput: isRunningOutput))
+            let isRunningInput = (try? readIsRunningInput(of: objectID)) ?? false
+            matches.append(MatchedProcess(
+                id: objectID,
+                pid: pid,
+                bundleID: bundleID,
+                isRunningOutput: isRunningOutput,
+                isRunningInput: isRunningInput
+            ))
         }
         return matches
     }
@@ -122,8 +133,16 @@ enum MeetingProcessMonitor {
     }
 
     private static func readIsRunningOutput(of objectID: AudioObjectID) throws -> Bool {
+        try readFlag(kAudioProcessPropertyIsRunningOutput, of: objectID)
+    }
+
+    private static func readIsRunningInput(of objectID: AudioObjectID) throws -> Bool {
+        try readFlag(kAudioProcessPropertyIsRunningInput, of: objectID)
+    }
+
+    private static func readFlag(_ selector: AudioObjectPropertySelector, of objectID: AudioObjectID) throws -> Bool {
         var address = AudioObjectPropertyAddress(
-            mSelector: kAudioProcessPropertyIsRunningOutput,
+            mSelector: selector,
             mScope: kAudioObjectPropertyScopeGlobal,
             mElement: kAudioObjectPropertyElementMain
         )
