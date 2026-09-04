@@ -22,9 +22,9 @@ final class AspectPreview {
     private var timer: Timer?
     private var index = 0
 
-    /// One frame per second, in the order a meeting would show them. The two
-    /// speaking runs let the clock be seen counting, and the second one is
-    /// long enough to get the pets' "full" drawing.
+    /// One frame per second, in the order a meeting would show them. The
+    /// speaking runs let the clock be seen counting and visit each of the
+    /// pets' turn stages: fresh, tiring at two minutes, full at four.
     static let frames: [(aspect: Aspect, speakingSeconds: Int?)] = {
         var frames: [(aspect: Aspect, speakingSeconds: Int?)] = []
         func hold(_ aspect: Aspect, for seconds: Int) {
@@ -35,8 +35,9 @@ final class AspectPreview {
         hold(.caution, for: 2)
         hold(.preliminary, for: 1)
         hold(.clear, for: 3)
-        for second in 40...44 { frames.append((.speaking, second)) }
-        for second in 0..<4 { frames.append((.speaking, SignalHeadRenderer.longTurnSeconds + 32 + second)) }
+        for second in 40...43 { frames.append((.speaking, second)) }
+        for second in 0..<3 { frames.append((.speaking, SignalHeadRenderer.tiringSeconds + 10 + second)) }
+        for second in 0..<3 { frames.append((.speaking, SignalHeadRenderer.longTurnSeconds + 32 + second)) }
         return frames
     }()
 

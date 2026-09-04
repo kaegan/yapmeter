@@ -33,9 +33,23 @@ enum SignalHeadRenderer {
     private static let horizontalPadding: CGFloat = 2
     private static let glyphTextGap: CGFloat = 5
 
-    /// A turn this long gets the pets' "full" drawing: puffed up, or mouth
-    /// wide open. The railway glyphs have no equivalent; the clock says it.
+    /// How long you've been talking, in the pet's opinion. It starts out
+    /// happy to be yapping, loses the sparkle at two minutes, and at four is
+    /// full: puffed up, eyes flat. The railway glyphs have no equivalent; the
+    /// clock says it.
+    enum TurnStage: Sendable {
+        case fresh, tiring, full
+    }
+
+    static let tiringSeconds = 120
     static let longTurnSeconds = 240
+
+    static func stage(forSpeakingSeconds seconds: Int?) -> TurnStage {
+        guard let seconds else { return .fresh }
+        if seconds >= longTurnSeconds { return .full }
+        if seconds >= tiringSeconds { return .tiring }
+        return .fresh
+    }
 
     static func menuBarImage(
         for aspect: Aspect,
@@ -51,7 +65,7 @@ enum SignalHeadRenderer {
             glyph: glyph,
             palette: palette,
             label: timeLabel(speakingSeconds),
-            longTurn: speakingSeconds >= longTurnSeconds
+            stage: stage(forSpeakingSeconds: speakingSeconds)
         )
     }
 
@@ -81,7 +95,7 @@ enum SignalHeadRenderer {
         if let cached = cache[key] { return cached }
         let width = horizontalPadding * 2 + width(of: glyph)
         let image = NSImage(size: NSSize(width: width, height: imageHeight), flipped: true) { _ in
-            draw(glyph, aspect: aspect, palette: palette, longTurn: false, atX: horizontalPadding)
+            draw(glyph, aspect: aspect, palette: palette, stage: .fresh, atX: horizontalPadding)
             return true
         }
         image.isTemplate = false
@@ -97,7 +111,7 @@ enum SignalHeadRenderer {
         glyph: GlyphStyle,
         palette: LampPalette,
         label: String,
-        longTurn: Bool
+        stage: TurnStage
     ) -> NSImage {
         // Label colour at the menu bar's own size, so the timer sits like the
         // clock's text does. The glyph beside it already says "you".
@@ -111,7 +125,7 @@ enum SignalHeadRenderer {
         let width = horizontalPadding * 2 + glyphWidth + glyphTextGap + ceil(textSize.width)
 
         let image = NSImage(size: NSSize(width: width, height: imageHeight), flipped: true) { rect in
-            draw(glyph, aspect: aspect, palette: palette, longTurn: longTurn, atX: horizontalPadding)
+            draw(glyph, aspect: aspect, palette: palette, stage: stage, atX: horizontalPadding)
             let textOrigin = NSPoint(
                 x: horizontalPadding + glyphWidth + glyphTextGap,
                 y: (rect.height - textSize.height) / 2
@@ -151,7 +165,7 @@ enum SignalHeadRenderer {
         }
     }
 
-    private static func draw(_ glyph: GlyphStyle, aspect: Aspect, palette: LampPalette, longTurn: Bool, atX x: CGFloat) {
+    private static func draw(_ glyph: GlyphStyle, aspect: Aspect, palette: LampPalette, stage: TurnStage, atX x: CGFloat) {
         guard let context = NSGraphicsContext.current?.cgContext else { return }
         context.saveGState()
         // A transparency layer so the cut-outs erase the glyph only, not
@@ -168,10 +182,10 @@ enum SignalHeadRenderer {
         let phase = phase(of: aspect)
         switch glyph {
         case .lamp: drawLamp(pen, phase)
-        case .petClassic: drawPetClassic(pen, phase, longTurn: longTurn)
-        case .petMouth: drawPetMouth(pen, phase, longTurn: longTurn)
-        case .petHollowSolid: drawPetHollowSolid(pen, phase, longTurn: longTurn)
-        case .petPair: drawPetPair(pen, phase, longTurn: longTurn)
+        case .petClassic: drawPetClassic(pen, phase, stage: stage)
+        case .petMouth: drawPetMouth(pen, phase, stage: stage)
+        case .petHollowSolid: drawPetHollowSolid(pen, phase, stage: stage)
+        case .petPair: drawPetPair(pen, phase, stage: stage)
         case .semaphoreArm: drawSemaphoreArm(pen, phase)
         case .wideHead: drawWideHead(pen, phase)
         case .crossingBarrier: drawCrossingBarrier(pen, phase)
@@ -198,7 +212,7 @@ enum SignalHeadRenderer {
         pen.fill(disc, pen.state)
     }
 
-    private static func drawPetClassic(_ pen: Pen, _ phase: Phase, longTurn: Bool) {
+    private static func drawPetClassic(_ pen: Pen, _ phase: Phase, stage: TurnStage) {
         let body = petBody(yours: phase.isYours)
         pen.fill(body, pen.state)
         switch phase {
@@ -215,20 +229,33 @@ enum SignalHeadRenderer {
         case .clear:
             pen.cut(eyes(6.2, 10.6))
             pen.cutStroke(petSmile(), width: 1.4)
-        case .you where longTurn:
+        case .you:
+            yappingFace(pen, body: body, stage: stage)
+        }
+    }
+
+    /// The talking face, by how long you've been at it. Happy arcs and a wide
+    /// open mouth to start; plain eyes at two minutes; at four, puffed up
+    /// with everything gone flat.
+    private static func yappingFace(_ pen: Pen, body: NSBezierPath, stage: TurnStage) {
+        switch stage {
+        case .fresh:
+            pen.cutStroke(happyEyes(), width: 1.2)
+            pen.cut(yapMouth())
+        case .tiring:
+            pen.cut(eyes(6.2, 10.6))
+            pen.cut(yapMouth())
+        case .full:
             pen.cut(body)
             pen.scaled(1.14, around: petCentre) {
                 pen.fill(body, pen.state)
                 pen.cutStroke(sleepEyes(), width: 1.2)
                 pen.cutStroke(line(6.4, 10.8, 10.4, 10.8), width: 1.4)
             }
-        case .you:
-            pen.cut(eyes(6.2, 10.6))
-            pen.cut(oval(8.4, 10.8, 2.3, 2.0))
         }
     }
 
-    private static func drawPetMouth(_ pen: Pen, _ phase: Phase, longTurn: Bool) {
+    private static func drawPetMouth(_ pen: Pen, _ phase: Phase, stage: TurnStage) {
         pen.fill(bubbleBody(yours: phase.isYours), pen.state)
         switch phase {
         case .dark:
@@ -242,14 +269,15 @@ enum SignalHeadRenderer {
             pen.cut(circle(8.4, 7.9, 1.5))
         case .clear:
             pen.cutStroke(curve(from: (4.8, 6.3), via: (8.4, 11.1), to: (12, 6.3)), width: 1.5)
-        case .you where longTurn:
-            pen.cut(oval(8.4, 7.7, 4.6, 3.7))
         case .you:
-            pen.cut(oval(8.4, 7.7, 3.4, 2.8))
+            switch stage {
+            case .fresh, .tiring: pen.cut(bowl(x: 4.6, y: 5.9, width: 7.6, depth: 4.4))
+            case .full: pen.cut(bowl(x: 4.0, y: 5.2, width: 8.8, depth: 5.4))
+            }
         }
     }
 
-    private static func drawPetHollowSolid(_ pen: Pen, _ phase: Phase, longTurn: Bool) {
+    private static func drawPetHollowSolid(_ pen: Pen, _ phase: Phase, stage: TurnStage) {
         let body = petBody(yours: phase.isYours)
         switch phase {
         case .dark:
@@ -269,16 +297,9 @@ enum SignalHeadRenderer {
             pen.fill(body, pen.state)
             pen.cut(eyes(6.2, 10.6))
             pen.cutStroke(petSmile(), width: 1.4)
-        case .you where longTurn:
-            pen.scaled(1.14, around: petCentre) {
-                pen.fill(body, pen.state)
-                pen.cutStroke(sleepEyes(), width: 1.2)
-                pen.cutStroke(line(6.4, 10.8, 10.4, 10.8), width: 1.4)
-            }
         case .you:
             pen.fill(body, pen.state)
-            pen.cut(eyes(6.2, 10.6))
-            pen.cut(oval(8.4, 10.8, 2.3, 2.0))
+            yappingFace(pen, body: body, stage: stage)
         }
     }
 
@@ -286,7 +307,7 @@ enum SignalHeadRenderer {
         case sleep, listen, pause, smile, talk, shout
     }
 
-    private static func drawPetPair(_ pen: Pen, _ phase: Phase, longTurn: Bool) {
+    private static func drawPetPair(_ pen: Pen, _ phase: Phase, stage: TurnStage) {
         let them: CGFloat = 6.2
         let you: CGFloat = 20.8
         switch phase {
@@ -304,7 +325,7 @@ enum SignalHeadRenderer {
             pairBlob(pen, at: you, face: .smile, color: pen.state)
         case .you:
             pairBlob(pen, at: them, face: .listen, color: pen.listener)
-            pairBlob(pen, at: you, face: longTurn ? .shout : .talk, color: pen.state)
+            pairBlob(pen, at: you, face: stage == .full ? .shout : .talk, color: pen.state)
         }
     }
 
@@ -450,8 +471,35 @@ enum SignalHeadRenderer {
         return path
     }
 
+    private static func happyEyes() -> NSBezierPath {
+        let path = curve(from: (5, 7.7), via: (6.3, 6.2), to: (7.6, 7.7))
+        path.append(curve(from: (9.2, 7.7), via: (10.5, 6.2), to: (11.8, 7.7)))
+        return path
+    }
+
     private static func petSmile() -> NSBezierPath {
         curve(from: (5.9, 9.9), via: (8.4, 12.6), to: (10.9, 9.9))
+    }
+
+    /// The open, talking mouth: flat on top, round underneath, twice as wide
+    /// as it is deep, so it reads as yapping rather than surprised.
+    private static func yapMouth() -> NSBezierPath {
+        bowl(x: 5.6, y: 9.6, width: 5.6, depth: 4)
+    }
+
+    /// A half-ellipse hanging from a flat top edge. `depth` is the control
+    /// depth; the bowl's bottom lands three quarters of the way down it.
+    private static func bowl(x: CGFloat, y: CGFloat, width: CGFloat, depth: CGFloat) -> NSBezierPath {
+        let path = NSBezierPath()
+        path.move(to: NSPoint(x: x, y: y))
+        path.line(to: NSPoint(x: x + width, y: y))
+        path.curve(
+            to: NSPoint(x: x, y: y),
+            controlPoint1: NSPoint(x: x + width, y: y + depth),
+            controlPoint2: NSPoint(x: x, y: y + depth)
+        )
+        path.close()
+        return path
     }
 
     // MARK: - Primitives, in the glyph's y-down coordinates

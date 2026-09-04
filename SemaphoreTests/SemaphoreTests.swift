@@ -289,15 +289,28 @@ final class SignalHeadRendererTests: XCTestCase {
         }
     }
 
+    func testTurnStagesTurnOverAtTwoAndFourMinutes() {
+        XCTAssertEqual(SignalHeadRenderer.stage(forSpeakingSeconds: nil), .fresh)
+        XCTAssertEqual(SignalHeadRenderer.stage(forSpeakingSeconds: 0), .fresh)
+        XCTAssertEqual(SignalHeadRenderer.stage(forSpeakingSeconds: 119), .fresh)
+        XCTAssertEqual(SignalHeadRenderer.stage(forSpeakingSeconds: 120), .tiring)
+        XCTAssertEqual(SignalHeadRenderer.stage(forSpeakingSeconds: 239), .tiring)
+        XCTAssertEqual(SignalHeadRenderer.stage(forSpeakingSeconds: 240), .full)
+    }
+
     func testTimerWidensTheImageAndStillDraws() {
         for glyph in GlyphStyle.allCases {
             let silent = SignalHeadRenderer.menuBarImage(for: .speaking, speakingSeconds: nil, glyph: glyph)
             let talking = SignalHeadRenderer.menuBarImage(for: .speaking, speakingSeconds: 42, glyph: glyph)
+            let tiring = SignalHeadRenderer.menuBarImage(
+                for: .speaking, speakingSeconds: SignalHeadRenderer.tiringSeconds + 10, glyph: glyph
+            )
             let longTurn = SignalHeadRenderer.menuBarImage(
                 for: .speaking, speakingSeconds: SignalHeadRenderer.longTurnSeconds + 32, glyph: glyph
             )
             XCTAssertGreaterThan(talking.size.width, silent.size.width, "\(glyph)")
             XCTAssertTrue(paintsAnything(talking), "\(glyph) at 0:42 drew nothing")
+            XCTAssertTrue(paintsAnything(tiring), "\(glyph) at two minutes drew nothing")
             XCTAssertTrue(paintsAnything(longTurn), "\(glyph) on a long turn drew nothing")
         }
     }
