@@ -6,7 +6,7 @@ struct YapmeterApp: App {
 
     var body: some Scene {
         MenuBarExtra {
-            PopoverView(engine: engine)
+            YapmeterMenu(engine: engine)
         } label: {
             Image(nsImage: SignalHeadRenderer.menuBarImage(
                 for: engine.aspect,
@@ -14,6 +14,5 @@ struct YapmeterApp: App {
             ))
             .onAppear { engine.start() }
         }
-        .menuBarExtraStyle(.window)
     }
 }

@@ -3,7 +3,8 @@ import Foundation
 /// The states of the signal, borrowed from UK railway block signalling.
 ///
 /// A "block" is the section of track (here: the conversational floor) that can
-/// only be occupied by one train (speaker) at a time.
+/// only be occupied by one train (speaker) at a time. The railway vocabulary
+/// stays in the code; what the user reads is plain English.
 enum Aspect: String, CaseIterable, Sendable {
     /// No meeting detected. The signal is dark — not in service.
     case dark
@@ -24,27 +25,16 @@ enum Aspect: String, CaseIterable, Sendable {
     /// The pause has lengthened past the dwell time. Go.
     case clear
 
-    /// Display name for the departure-board popover.
+    /// What the menu bar lamp means, in plain words. The lamp carries the
+    /// state visually; this is its accessibility description.
     var displayName: String {
         switch self {
-        case .dark: return "OUT OF SERVICE"
-        case .speaking: return "YOU HAVE THE FLOOR"
-        case .occupied: return "OCCUPIED"
-        case .caution: return "CAUTION"
-        case .preliminary: return "PRELIMINARY"
-        case .clear: return "CLEAR"
-        }
-    }
-
-    /// One-line gloss under the display name.
-    var subtitle: String {
-        switch self {
-        case .dark: return "No meeting detected."
-        case .speaking: return "Holding the block."
-        case .occupied: return "Hold."
-        case .caution: return "Mind the gap."
-        case .preliminary: return "Almost clear."
-        case .clear: return "Go."
+        case .dark: return "No meeting"
+        case .speaking: return "Your turn"
+        case .occupied: return "Someone's speaking"
+        case .caution: return "They paused"
+        case .preliminary: return "Almost clear"
+        case .clear: return "Clear to speak"
         }
     }
 }

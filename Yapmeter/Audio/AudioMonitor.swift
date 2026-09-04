@@ -1,6 +1,7 @@
 import AVFoundation
 import Foundation
 import Observation
+import os
 
 /// Owns both capture paths and their lifecycle: the process tap on the meeting
 /// app's output (the far end) and the microphone (the near end). Starts them
@@ -27,10 +28,6 @@ final class AudioMonitor {
 
     private(set) var status: Status = .waitingForMeeting
     private(set) var isMeetingActive = false
-    /// Latest levels, for the popover's meters. The detector reads peaks via
-    /// `sampleLevels()` instead; these are display-only.
-    private(set) var farEndDBFS: Float = LevelMeter.silence
-    private(set) var nearEndDBFS: Float = LevelMeter.silence
 
     private let tapSource = ProcessTapSource()
     private let micSource = MicrophoneSource()
@@ -44,6 +41,9 @@ final class AudioMonitor {
     /// its input stream briefly when switching devices or screen-sharing, and
     /// going dark for a blink each time would be worse than reacting slowly.
     private let quietPollsBeforeStopping = 5
+
+    /// The menu shows a plain-English line for failures; the detail goes here.
+    private static let logger = Logger(subsystem: "fyi.kaegan.yapmeter", category: "audio")
 
     func start() {
         guard detectTimer == nil else { return }
@@ -63,11 +63,7 @@ final class AudioMonitor {
 
     /// Peak level on each end since the last call, for the voice detectors.
     func sampleLevels() -> Levels {
-        let far = tapSource.levelMeter.consumePeak()
-        let near = micSource.levelMeter.consumePeak()
-        if far != farEndDBFS { farEndDBFS = far }
-        if near != nearEndDBFS { nearEndDBFS = near }
-        return Levels(farEnd: far, nearEnd: near)
+        Levels(farEnd: tapSource.levelMeter.consumePeak(), nearEnd: micSource.levelMeter.consumePeak())
     }
 
     /// A meeting app with the microphone open is in a call. Output alone isn't
@@ -86,6 +82,7 @@ final class AudioMonitor {
         do {
             matches = try MeetingProcessMonitor.matchingProcesses()
         } catch {
+            Self.logger.error("Meeting process detection failed: \(String(describing: error), privacy: .public)")
             status = .error(String(describing: error))
             return
         }
@@ -124,6 +121,7 @@ final class AudioMonitor {
             do {
                 try await Task.detached { try tap.start(processes: processIDs) }.value
             } catch {
+                Self.logger.error("Process tap failed: \(String(describing: error), privacy: .public)")
                 self.status = .error(String(describing: error))
                 return
             }
@@ -152,6 +150,7 @@ final class AudioMonitor {
             }
 
             if let micFailure {
+                Self.logger.error("Microphone unavailable: \(micFailure, privacy: .public)")
                 self.status = .microphoneUnavailable(micFailure)
             } else {
                 self.status = .running(processBundleIDs: bundleIDs)
@@ -163,7 +162,5 @@ final class AudioMonitor {
         tapSource.stop()
         micSource.stop()
         status = .waitingForMeeting
-        farEndDBFS = LevelMeter.silence
-        nearEndDBFS = LevelMeter.silence
     }
 }

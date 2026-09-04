@@ -1,15 +1,15 @@
 import AppKit
 
 /// Renders the menu bar status image: a single lamp in the aspect's colour,
-/// plus your turn's elapsed time when you're the one talking.
+/// plus your turn's elapsed time when you're the one talking. This is the
+/// app's entire display; the menu behind it holds settings only.
 ///
 /// One lamp, not the four-lamp head. At 18pt the full head is four 12pt lamps
-/// with three of them dark, which reads as a smudge rather than a signal. The
-/// head belongs in the popover, where there's room for it.
+/// with three of them dark, which reads as a smudge rather than a signal.
 ///
-/// `MenuBarExtra` in `.window` style tends to force template (monochrome)
-/// rendering on SwiftUI-provided label content, so we draw and cache real
-/// `NSImage`s with `isTemplate = false` ourselves.
+/// `MenuBarExtra` tends to force template (monochrome) rendering on
+/// SwiftUI-provided label content, so we draw and cache real `NSImage`s with
+/// `isTemplate = false` ourselves.
 @MainActor
 enum SignalHeadRenderer {
     private static var lampCache: [Aspect: NSImage] = [:]
@@ -54,6 +54,7 @@ enum SignalHeadRenderer {
             return true
         }
         image.isTemplate = false
+        image.accessibilityDescription = aspect.displayName
         lampCache[aspect] = image
         return image
     }
@@ -61,9 +62,11 @@ enum SignalHeadRenderer {
     /// Not cached: the label changes every second, and caching per-label would
     /// grow a dictionary entry per second of every meeting.
     private static func lampWithTimeImage(for aspect: Aspect, label: String) -> NSImage {
+        // Label colour at the menu bar's own size, so the timer sits like the
+        // clock's text does. The blue lamp beside it already says "you".
         let attributes: [NSAttributedString.Key: Any] = [
-            .font: NSFont.monospacedDigitSystemFont(ofSize: 11, weight: .medium),
-            .foregroundColor: color(for: aspect),
+            .font: NSFont.monospacedDigitSystemFont(ofSize: NSFont.systemFontSize, weight: .regular),
+            .foregroundColor: NSColor.labelColor,
         ]
         let text = NSAttributedString(string: label, attributes: attributes)
         let textSize = text.size()
@@ -79,6 +82,7 @@ enum SignalHeadRenderer {
             return true
         }
         image.isTemplate = false
+        image.accessibilityDescription = "\(aspect.displayName), \(label)"
         return image
     }
 
@@ -92,7 +96,7 @@ enum SignalHeadRenderer {
     private static func draw(lamp rect: NSRect, aspect: Aspect) {
         let path = NSBezierPath(ovalIn: rect)
         guard aspect != .dark else {
-            NSColor.tertiaryLabelColor.setStroke()
+            NSColor.secondaryLabelColor.setStroke()
             path.lineWidth = 1.2
             path.stroke()
             return
