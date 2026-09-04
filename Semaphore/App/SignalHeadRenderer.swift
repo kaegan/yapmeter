@@ -153,7 +153,7 @@ enum SignalHeadRenderer {
             context: context,
             state: palette.color(for: aspect),
             ink: .labelColor,
-            dim: .secondaryLabelColor
+            listener: .secondaryLabelColor
         )
         let phase = phase(of: aspect)
         switch glyph {
@@ -176,7 +176,7 @@ enum SignalHeadRenderer {
     private static func drawLamp(_ pen: Pen, _ phase: Phase) {
         let disc = circle(8, 8, 5.5)
         guard phase != .dark else {
-            pen.stroke(disc, pen.dim, width: 1.2)
+            pen.stroke(disc, pen.state, width: 1.2)
             return
         }
         if let glow = NSGradient(
@@ -189,86 +189,83 @@ enum SignalHeadRenderer {
     }
 
     private static func drawPetClassic(_ pen: Pen, _ phase: Phase, longTurn: Bool) {
+        pen.fill(petBody(), pen.state)
         switch phase {
         case .dark:
-            pen.fill(petBody(), pen.dim)
             pen.cutStroke(sleepEyes(), width: 1.2)
         case .them:
-            pen.fill(petBody(), pen.state)
-            pen.cut(eyes(5.8, 10.2))
+            pen.cut(eyes(6.2, 10.6))
             // A hand over the mouth.
-            pen.cut(box(5.9, 8.8, 4.2, 1.7, radius: 0.85))
+            pen.cut(box(6.3, 9.8, 4.2, 1.7, radius: 0.85))
         case .pause:
-            pen.fill(petBody(), pen.state)
-            pen.cut(eyes(6.3, 10.7))
-            pen.cutStroke(line(6.3, 9.6, 9.7, 9.6), width: 1.2)
+            pen.cut(eyes(6.7, 11.1))
+            pen.cutStroke(line(6.7, 10.6, 10.1, 10.6), width: 1.2)
         case .clear:
-            pen.fill(petBody(), pen.state)
-            pen.cut(eyes(5.8, 10.2))
+            pen.cut(eyes(6.2, 10.6))
             pen.cutStroke(petSmile(), width: 1.4)
         case .you where longTurn:
-            pen.scaled(1.14, around: NSPoint(x: 8, y: 7.6)) {
+            pen.cut(petBody())
+            pen.scaled(1.14, around: petCentre) {
                 pen.fill(petBody(), pen.state)
                 pen.cutStroke(sleepEyes(), width: 1.2)
-                pen.cutStroke(line(6, 9.8, 10, 9.8), width: 1.4)
+                pen.cutStroke(line(6.4, 10.8, 10.4, 10.8), width: 1.4)
             }
         case .you:
-            pen.fill(petBody(), pen.state)
-            pen.cut(eyes(5.8, 10.2))
-            pen.cut(oval(8, 9.8, 2.3, 2.0))
+            pen.cut(eyes(6.2, 10.6))
+            pen.cut(oval(8.4, 10.8, 2.3, 2.0))
         }
     }
 
     private static func drawPetMouth(_ pen: Pen, _ phase: Phase, longTurn: Bool) {
-        pen.fill(bubbleBody(), phase == .dark ? pen.dim : pen.state)
+        pen.fill(bubbleBody(), pen.state)
         switch phase {
         case .dark:
-            pen.cutStroke(line(6, 7.2, 10, 7.2), width: 1.3)
+            pen.cutStroke(line(6.4, 7.9, 10.4, 7.9), width: 1.3)
         case .them:
             // Zipped.
             pen.cutStroke(lines([
-                (4.3, 7.2, 11.7, 7.2), (6, 6, 6, 8.4), (8, 6, 8, 8.4), (10, 6, 10, 8.4),
+                (4.7, 7.9, 12.1, 7.9), (6.4, 6.7, 6.4, 9.1), (8.4, 6.7, 8.4, 9.1), (10.4, 6.7, 10.4, 9.1),
             ]), width: 1.25)
         case .pause:
-            pen.cut(circle(8, 7.2, 1.5))
+            pen.cut(circle(8.4, 7.9, 1.5))
         case .clear:
-            pen.cutStroke(curve(from: (4.4, 5.6), via: (8, 10.4), to: (11.6, 5.6)), width: 1.5)
+            pen.cutStroke(curve(from: (4.8, 6.3), via: (8.4, 11.1), to: (12, 6.3)), width: 1.5)
         case .you where longTurn:
-            pen.cut(oval(8, 7, 4.6, 3.7))
+            pen.cut(oval(8.4, 7.7, 4.6, 3.7))
         case .you:
-            pen.cut(oval(8, 7, 3.4, 2.8))
+            pen.cut(oval(8.4, 7.7, 3.4, 2.8))
         }
     }
 
     private static func drawPetHollowSolid(_ pen: Pen, _ phase: Phase, longTurn: Bool) {
         switch phase {
         case .dark:
-            pen.stroke(petBody(), pen.dim, width: 1.3)
-            pen.stroke(sleepEyes(), pen.dim, width: 1.2)
+            pen.stroke(petBody(), pen.state, width: 1.3)
+            pen.stroke(sleepEyes(), pen.state, width: 1.2)
         case .them:
             pen.stroke(petBody(), pen.state, width: 1.5)
-            pen.fill(eyes(5.8, 10.2), pen.state)
+            pen.fill(eyes(6.2, 10.6), pen.state)
             pen.stroke(lines([
-                (5.8, 9.6, 10.2, 9.6), (7.2, 8.7, 7.2, 10.5), (8.8, 8.7, 8.8, 10.5),
+                (6.2, 10.6, 10.6, 10.6), (7.6, 9.7, 7.6, 11.5), (9.2, 9.7, 9.2, 11.5),
             ]), pen.state, width: 1.2)
         case .pause:
             pen.stroke(petBody(), pen.state, width: 1.5)
-            pen.fill(eyes(5.8, 10.2), pen.state)
-            pen.fill(circle(8, 9.6, 1.1), pen.state)
+            pen.fill(eyes(6.2, 10.6), pen.state)
+            pen.fill(circle(8.4, 10.6, 1.1), pen.state)
         case .clear:
             pen.fill(petBody(), pen.state)
-            pen.cut(eyes(5.8, 10.2))
+            pen.cut(eyes(6.2, 10.6))
             pen.cutStroke(petSmile(), width: 1.4)
         case .you where longTurn:
-            pen.scaled(1.14, around: NSPoint(x: 8, y: 7.6)) {
+            pen.scaled(1.14, around: petCentre) {
                 pen.fill(petBody(), pen.state)
                 pen.cutStroke(sleepEyes(), width: 1.2)
-                pen.cutStroke(line(6, 9.8, 10, 9.8), width: 1.4)
+                pen.cutStroke(line(6.4, 10.8, 10.4, 10.8), width: 1.4)
             }
         case .you:
             pen.fill(petBody(), pen.state)
-            pen.cut(eyes(5.8, 10.2))
-            pen.cut(oval(8, 9.8, 2.3, 2.0))
+            pen.cut(eyes(6.2, 10.6))
+            pen.cut(oval(8.4, 10.8, 2.3, 2.0))
         }
     }
 
@@ -281,19 +278,19 @@ enum SignalHeadRenderer {
         let you: CGFloat = 20.8
         switch phase {
         case .dark:
-            pairBlob(pen, at: them, face: .sleep, color: pen.dim)
-            pairBlob(pen, at: you, face: .sleep, color: pen.dim)
+            pairBlob(pen, at: them, face: .sleep, color: pen.state)
+            pairBlob(pen, at: you, face: .sleep, color: pen.state)
         case .them:
             pairBlob(pen, at: them, face: .talk, color: pen.state)
-            pairBlob(pen, at: you, face: .listen, color: pen.dim)
+            pairBlob(pen, at: you, face: .listen, color: pen.listener)
         case .pause:
             pairBlob(pen, at: them, face: .pause, color: pen.state)
-            pairBlob(pen, at: you, face: .listen, color: pen.dim)
+            pairBlob(pen, at: you, face: .listen, color: pen.listener)
         case .clear:
-            pairBlob(pen, at: them, face: .listen, color: pen.dim)
+            pairBlob(pen, at: them, face: .listen, color: pen.listener)
             pairBlob(pen, at: you, face: .smile, color: pen.state)
         case .you:
-            pairBlob(pen, at: them, face: .listen, color: pen.dim)
+            pairBlob(pen, at: them, face: .listen, color: pen.listener)
             pairBlob(pen, at: you, face: longTurn ? .shout : .talk, color: pen.state)
         }
     }
@@ -336,9 +333,9 @@ enum SignalHeadRenderer {
         case .clear, .you: angle = 70
         }
         let pivot = NSPoint(x: 3.1, y: 3.3)
-        pen.fill(box(2, 1, 2.2, 15, radius: 0.7), phase == .dark ? pen.dim : pen.ink)
+        pen.fill(box(2, 1, 2.2, 15, radius: 0.7), pen.ink)
         pen.rotated(angle, around: pivot) {
-            pen.fill(box(3.1, 1.7, 12.4, 3.2, radius: 1.1), phase == .dark ? pen.dim : pen.state)
+            pen.fill(box(3.1, 1.7, 12.4, 3.2, radius: 1.1), pen.state)
             if phase != .dark {
                 pen.cut(box(11.4, 1.7, 1.7, 3.2))
             }
@@ -348,7 +345,7 @@ enum SignalHeadRenderer {
 
     /// Position is the message, left to right; the live lamp is the big one.
     private static func drawWideHead(_ pen: Pen, _ phase: Phase) {
-        let frame = phase == .dark ? pen.dim : pen.ink
+        let frame = pen.ink
         pen.stroke(box(0.8, 2.3, 24.4, 11.4, radius: 5.7), frame, width: 1.2)
         let live: Int?
         switch phase {
@@ -375,9 +372,9 @@ enum SignalHeadRenderer {
         case .pause: angle = 40
         case .clear, .you: angle = 82
         }
-        pen.fill(box(0.5, 11.6, 4, 4.4, radius: 1), phase == .dark ? pen.dim : pen.ink)
+        pen.fill(box(0.5, 11.6, 4, 4.4, radius: 1), pen.ink)
         pen.rotated(-angle, around: NSPoint(x: 2.5, y: 13.1)) {
-            pen.fill(box(2.5, 11.6, 13, 3, radius: 1.3), phase == .dark ? pen.dim : pen.state)
+            pen.fill(box(2.5, 11.6, 13, 3, radius: 1.3), pen.state)
             if phase != .dark {
                 for x in [6.0, 9.6, 13.2] {
                     pen.cut(box(CGFloat(x), 11.6, 1.6, 3))
@@ -388,54 +385,52 @@ enum SignalHeadRenderer {
 
     // MARK: - Shared shapes
 
-    /// Round one's blob: a speech bubble whose tail is its foot.
+    /// Where the pets' bodies are centred; the long-turn puff scales about it.
+    private static let petCentre = NSPoint(x: 8.4, y: 8)
+
+    /// Round one's blob, with the tail moved from straight down to the lower
+    /// left corner at 45°. Straight down it took a quarter of the box and left
+    /// the body at 11 units; on the corner it costs almost no height and the
+    /// body fills 13.
     private static func petBody() -> NSBezierPath {
         let path = NSBezierPath()
-        path.move(to: NSPoint(x: 1.5, y: 7))
-        path.curve(to: NSPoint(x: 8, y: 1.5), controlPoint1: NSPoint(x: 1.5, y: 3.4), controlPoint2: NSPoint(x: 4.3, y: 1.5))
-        path.curve(to: NSPoint(x: 14.5, y: 7), controlPoint1: NSPoint(x: 11.7, y: 1.5), controlPoint2: NSPoint(x: 14.5, y: 3.4))
-        path.curve(to: NSPoint(x: 9.7, y: 12.4), controlPoint1: NSPoint(x: 14.5, y: 10.1), controlPoint2: NSPoint(x: 12.4, y: 12.1))
-        path.line(to: NSPoint(x: 8.2, y: 15.2))
-        path.line(to: NSPoint(x: 7.1, y: 12.4))
-        path.curve(to: NSPoint(x: 1.5, y: 7), controlPoint1: NSPoint(x: 4.1, y: 12.1), controlPoint2: NSPoint(x: 1.5, y: 10.1))
+        // The long way round from the tail's near edge to its far edge, then
+        // out to the tip and back.
+        path.appendArc(withCenter: petCentre, radius: 6.5, startAngle: 120, endAngle: 150, clockwise: true)
+        path.line(to: NSPoint(x: 1.2, y: 15.2))
         path.close()
         return path
     }
 
-    /// Round two's bubble: flat top, hard tail, so it reads as "talk" before
-    /// it reads as "creature".
+    /// Round two's bubble: flat top, and the same corner tail, so it reads as
+    /// "talk" before it reads as "creature".
     private static func bubbleBody() -> NSBezierPath {
         let path = NSBezierPath()
-        path.move(to: NSPoint(x: 2.6, y: 1.5))
-        path.line(to: NSPoint(x: 13.4, y: 1.5))
-        path.curve(to: NSPoint(x: 15.2, y: 3.3), controlPoint1: NSPoint(x: 14.6, y: 1.5), controlPoint2: NSPoint(x: 15.2, y: 2.1))
-        path.line(to: NSPoint(x: 15.2, y: 10.4))
-        path.curve(to: NSPoint(x: 13.4, y: 12.2), controlPoint1: NSPoint(x: 15.2, y: 11.6), controlPoint2: NSPoint(x: 14.6, y: 12.2))
-        path.line(to: NSPoint(x: 8.6, y: 12.2))
-        path.line(to: NSPoint(x: 6.2, y: 15.3))
-        path.line(to: NSPoint(x: 6.5, y: 12.2))
-        path.line(to: NSPoint(x: 2.6, y: 12.2))
-        path.curve(to: NSPoint(x: 0.8, y: 10.4), controlPoint1: NSPoint(x: 1.4, y: 12.2), controlPoint2: NSPoint(x: 0.8, y: 11.6))
-        path.line(to: NSPoint(x: 0.8, y: 3.3))
-        path.curve(to: NSPoint(x: 2.6, y: 1.5), controlPoint1: NSPoint(x: 0.8, y: 2.1), controlPoint2: NSPoint(x: 1.4, y: 1.5))
+        let radius: CGFloat = 1.8
+        path.move(to: NSPoint(x: 5.4, y: 13.6))
+        path.line(to: NSPoint(x: 0.6, y: 15.9))
+        path.line(to: NSPoint(x: 1.2, y: 12.2))
+        path.appendArc(from: NSPoint(x: 1.2, y: 1.5), to: NSPoint(x: 15.6, y: 1.5), radius: radius)
+        path.appendArc(from: NSPoint(x: 15.6, y: 1.5), to: NSPoint(x: 15.6, y: 13.6), radius: radius)
+        path.appendArc(from: NSPoint(x: 15.6, y: 13.6), to: NSPoint(x: 5.4, y: 13.6), radius: radius)
         path.close()
         return path
     }
 
-    private static func eyes(_ left: CGFloat, _ right: CGFloat, y: CGFloat = 6.3, radius: CGFloat = 1.05) -> NSBezierPath {
+    private static func eyes(_ left: CGFloat, _ right: CGFloat, y: CGFloat = 7.2, radius: CGFloat = 1.05) -> NSBezierPath {
         let path = circle(left, y, radius)
         path.append(circle(right, y, radius))
         return path
     }
 
     private static func sleepEyes() -> NSBezierPath {
-        let path = curve(from: (4.6, 6.4), via: (5.9, 7.7), to: (7.2, 6.4))
-        path.append(curve(from: (8.8, 6.4), via: (10.1, 7.7), to: (11.4, 6.4)))
+        let path = curve(from: (5, 7.3), via: (6.3, 8.6), to: (7.6, 7.3))
+        path.append(curve(from: (9.2, 7.3), via: (10.5, 8.6), to: (11.8, 7.3)))
         return path
     }
 
     private static func petSmile() -> NSBezierPath {
-        curve(from: (5.5, 8.9), via: (8, 11.6), to: (10.5, 8.9))
+        curve(from: (5.9, 9.9), via: (8.4, 12.6), to: (10.9, 9.9))
     }
 
     // MARK: - Primitives, in the glyph's y-down coordinates
@@ -492,13 +487,14 @@ enum SignalHeadRenderer {
     }
 
     /// Fills, strokes and cut-outs against one context. `state` is the
-    /// aspect's colour; `ink` is for posts and housings; `dim` is asleep,
-    /// out of service, or the one who's listening.
+    /// aspect's colour (the label colour when dark, so an idle glyph matches
+    /// the icons around it); `ink` is for posts and housings; `listener` is
+    /// the one who isn't talking in the two-pet glyph.
     private struct Pen {
         let context: CGContext
         let state: NSColor
         let ink: NSColor
-        let dim: NSColor
+        let listener: NSColor
 
         func fill(_ path: NSBezierPath, _ color: NSColor) {
             color.setFill()

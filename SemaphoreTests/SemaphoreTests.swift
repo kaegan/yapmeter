@@ -200,11 +200,11 @@ final class MenuBarStyleTests: XCTestCase {
         }
     }
 
-    /// Every palette keeps the dark aspect as a label colour: an out-of-service
-    /// signal is furniture, not a fifth colour.
+    /// Every palette keeps the dark aspect as the label colour: an idle glyph
+    /// should match the menu bar's other icons, not be a fifth colour.
     func testDarkAspectIsNeverAPaletteColour() {
         for palette in LampPalette.allCases {
-            XCTAssertEqual(palette.color(for: .dark), .secondaryLabelColor, "\(palette)")
+            XCTAssertEqual(palette.color(for: .dark), .labelColor, "\(palette)")
         }
     }
 }

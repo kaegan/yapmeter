@@ -41,8 +41,8 @@ enum GlyphStyle: String, CaseIterable, Sendable {
 }
 
 /// The four live colours the glyph can wear. The dark aspect is always the
-/// secondary label colour so an out-of-service signal looks like part of the
-/// menu bar rather than a fifth colour.
+/// label colour, so an out-of-service glyph is white on a dark menu bar and
+/// black on a light one, exactly like the icons around it.
 enum LampPalette: String, CaseIterable, Sendable {
     /// macOS system red, yellow, green and blue: what the app shipped with.
     case system
@@ -61,7 +61,7 @@ enum LampPalette: String, CaseIterable, Sendable {
 
     func color(for aspect: Aspect) -> NSColor {
         switch aspect {
-        case .dark: return .secondaryLabelColor
+        case .dark: return .labelColor
         case .occupied: return red
         case .caution, .preliminary: return amber
         case .clear: return green
