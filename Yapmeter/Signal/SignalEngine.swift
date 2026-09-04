@@ -40,7 +40,7 @@ final class SignalEngine {
     private var lastNearSpeechAt: Date?
 
     private static let sensitivityKey = "sensitivity"
-    private static let logger = Logger(subsystem: "fyi.kaegan.semaphore", category: "signal")
+    private static let logger = Logger(subsystem: "fyi.kaegan.yapmeter", category: "signal")
     private var lastLevelLogAt = Date.distantPast
     private static let tickInterval: TimeInterval = 1.0 / 50.0
 
@@ -106,7 +106,7 @@ final class SignalEngine {
 
     /// Once a second, for when the detector misbehaves in a room you can't
     /// reproduce in a test. Debug level, so it only shows under
-    /// `log stream --predicate 'subsystem == "fyi.kaegan.semaphore"' --level debug`.
+    /// `log stream --predicate 'subsystem == "fyi.kaegan.yapmeter"' --level debug`.
     private func logLevels(_ levels: AudioMonitor.Levels, far: Bool, near: Bool, now: Date) {
         guard now.timeIntervalSince(lastLevelLogAt) >= 1 else { return }
         lastLevelLogAt = now

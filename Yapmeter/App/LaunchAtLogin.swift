@@ -6,7 +6,7 @@ import ServiceManagement
 /// when a call starts, this is the difference between working and not.
 @MainActor
 enum LaunchAtLogin {
-    private static let logger = Logger(subsystem: "fyi.kaegan.semaphore", category: "launch")
+    private static let logger = Logger(subsystem: "fyi.kaegan.yapmeter", category: "launch")
 
     static var isEnabled: Bool {
         get { SMAppService.mainApp.status == .enabled }

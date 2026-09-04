@@ -86,7 +86,7 @@ final class AudioMonitor {
     private let quietPollsBeforeStopping = 5
 
     /// The menu shows a plain-English line for failures; the detail goes here.
-    private static let logger = Logger(subsystem: "fyi.kaegan.semaphore", category: "audio")
+    private static let logger = Logger(subsystem: "fyi.kaegan.yapmeter", category: "audio")
 
     func start() {
         guard detectTimer == nil else { return }

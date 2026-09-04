@@ -5,7 +5,7 @@ import SwiftUI
 /// doing right now (the one thing the lamp can't tell you: *why* it's dark),
 /// then settings. Nothing else to report in here that the icon didn't
 /// already say.
-struct SemaphoreMenu: View {
+struct YapmeterMenu: View {
     @Bindable var engine: SignalEngine
 
     var body: some View {
@@ -43,7 +43,7 @@ struct SemaphoreMenu: View {
         Toggle("Launch at Login", isOn: launchAtLogin)
         Divider()
         // An LSUIElement app has no app menu, so this is the only ⌘Q there is.
-        Button("Quit Semaphore") { NSApp.terminate(nil) }
+        Button("Quit Yapmeter") { NSApp.terminate(nil) }
             .keyboardShortcut("q")
     }
 
