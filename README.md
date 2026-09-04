@@ -34,11 +34,21 @@ looks at whether there's speech-shaped energy in the signal.
 ## Meeting detection
 
 The app starts and stops itself. It polls CoreAudio's process list every two
-seconds and treats a meeting app **with the microphone open** as a live call —
-output alone isn't enough, or a Chrome tab playing a video would count. Output
-is the fallback when no process reports input, which covers a Zoom lobby. When
-the meeting ends both capture paths are torn down, so the app isn't holding an
-aggregate audio device or the mic open all day.
+seconds and treats a meeting app **with the microphone open** as a live call.
+For a browser, output alone isn't enough — a Chrome tab playing a video would
+otherwise count. For a dedicated meeting app it is, which covers a Zoom lobby.
+When the meeting ends both capture paths are torn down, so the app isn't
+holding an aggregate audio device or the mic open all day.
+
+That poll is a reconciler, not a one-shot. Starting capture on the moment a
+meeting first appears isn't enough to keep it running: the process tap can fail
+on the first attempt while the system-audio permission is still being decided,
+`AVAudioEngine` stops itself and drops its tap whenever the audio hardware
+changes (which a meeting does routinely — joining a call, sharing a screen,
+plugging in headphones), and a meeting app that respawns its audio helper
+leaves the tap pointed at a process that no longer plays anything. Every poll
+asks whether each path *should* be running and whether it is *actually
+delivering*, and rebuilds whatever isn't.
 
 Calls the detector can't see (FaceTime is one) can be handled by hand: the
 **Listen to All Audio** submenu taps everything the Mac is playing, plus the
@@ -68,6 +78,17 @@ the default doesn't suit.
 One known limitation: macOS exposes no per-app mute state, so if you're muted
 in Zoom and talking anyway, the turn timer still runs.
 
+## Failing safe
+
+Silence and deafness look identical to a level meter — both are just low
+numbers — and silence is what the signal turns into a green *clear to speak*.
+So a capture path that has died would confidently tell you to talk over
+someone. Each path's liveness is tracked separately from its level (a running
+IO path reports continuously whether or not there's sound in it), and when the
+far end can't be heard the lamp goes **dark** rather than green, with the menu
+saying why. Your own turn is measured on the microphone, so the timer keeps
+working even when the far end is out.
+
 ## Requirements
 
 - macOS 14.2+ (needs the CoreAudio process-tap API)
@@ -95,5 +116,7 @@ Two prompts, both on the first meeting the app sees:
 ## Status
 
 Milestone 3: automatic meeting detection, voice activity detection on both
-ends, the signal state machine, and the turn timer. The dwell time before the
-block reads clear is fixed at 1.2s; learning it per-conversation is next.
+ends, the signal state machine, and the turn timer, plus a pass of hardening on
+all three (capture recovery, failing safe, and a detector that no longer latches
+on steady noise). The dwell time before the block reads clear is fixed at 1.2s;
+learning it per-conversation is next.

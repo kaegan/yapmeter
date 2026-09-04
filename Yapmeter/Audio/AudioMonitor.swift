@@ -7,6 +7,16 @@ import os
 /// app's output (the far end) and the microphone (the near end). Starts them
 /// when a meeting appears and tears them down when it ends, so we aren't
 /// holding an aggregate audio device or the mic open all day.
+///
+/// The poll is a *reconciler*, not an edge trigger. Starting capture once, on
+/// the moment a meeting is first seen, is not enough: the tap can fail on the
+/// first attempt (the system-audio permission is still being decided), the
+/// engine behind the microphone stops itself whenever the audio hardware
+/// changes, and the set of processes worth tapping changes when a meeting app
+/// respawns its audio helper. Any of those used to leave a capture path dead
+/// for the rest of the meeting with nothing watching. Every poll now asks
+/// "should this be running, and is it actually delivering?" and repairs what
+/// isn't.
 @MainActor
 @Observable
 final class AudioMonitor {
@@ -72,11 +82,48 @@ final class AudioMonitor {
         listenToAllAudio = false
     }
 
+    /// Whether the far-end tap is actually delivering buffers right now.
+    ///
+    /// This is the difference between "the other person is quiet" and "we have
+    /// gone deaf", which the level alone cannot tell apart — both are just low
+    /// numbers. It matters because the signal's safe-looking aspect is green:
+    /// a dead tap that reads as silence renders as *clear to speak*, which is
+    /// the most harmful thing this app could get wrong.
+    var isHearingFarEnd: Bool {
+        tapSource.isRunning && tapSource.levelMeter.hasUpdated(within: Self.stallWindow)
+    }
+
+    /// Whether the microphone is delivering. False when the mic was refused,
+    /// which is a supported configuration (the signal works, the turn timer
+    /// doesn't), so this only drives the watchdog.
+    var isHearingNearEnd: Bool {
+        micSource.isRunning && micSource.levelMeter.hasUpdated(within: Self.stallWindow)
+    }
+
     private let tapSource = ProcessTapSource()
     private let micSource = MicrophoneSource()
     private var detectTimer: Timer?
     private var quietPolls = 0
     private var isStarting = false
+
+    /// When the current capture attempt got going, so the watchdog gives a
+    /// freshly started path time to produce its first buffer before judging it.
+    private var captureStartedAt: Date?
+    /// Consecutive failed start attempts, for backing off a tap that can't be
+    /// created at all (permission refused, unsupported hardware) rather than
+    /// retrying it every two seconds forever.
+    private var startFailures = 0
+    private var nextStartAttempt: Date?
+    /// Set when the microphone is refused outright. Retrying that just fails
+    /// again; the user has to go to System Settings, and the menu says so.
+    private var microphoneRefused = false
+    /// The processes the live tap was built for. A meeting app that respawns
+    /// its audio helper gets a new `AudioObjectID`, and the old tap then
+    /// delivers silence forever.
+    private var tappedProcesses: [AudioObjectID] = []
+    /// When the live process set first stopped matching the tapped one, for
+    /// debouncing helper processes that come and go.
+    private var processMismatchSince: Date?
 
     /// How often we ask CoreAudio which meeting processes are live.
     private let detectInterval: TimeInterval = 2
@@ -85,22 +132,38 @@ final class AudioMonitor {
     /// going dark for a blink each time would be worse than reacting slowly.
     private let quietPollsBeforeStopping = 5
 
+    /// A running IO path reports continuously, so a gap this long means it
+    /// stopped rather than that the room went quiet.
+    private static let stallWindow: TimeInterval = 3
+    /// Grace after a start before the watchdog is allowed to call it stalled.
+    private static let startGrace: TimeInterval = 5
+
+    /// macOS naps background agents, and a napped app's timers stop firing at
+    /// anything like 50 Hz. Held only while a meeting is live.
+    private var activityToken: NSObjectProtocol?
+
     /// The menu shows a plain-English line for failures; the detail goes here.
     private static let logger = Logger(subsystem: "fyi.kaegan.yapmeter", category: "audio")
 
     func start() {
         guard detectTimer == nil else { return }
         detect()
-        detectTimer = Timer.scheduledTimer(withTimeInterval: detectInterval, repeats: true) { [weak self] _ in
+        let timer = Timer(timeInterval: detectInterval, repeats: true) { [weak self] _ in
             Task { @MainActor in
                 self?.detect()
             }
         }
+        // `.common`, not the default mode: opening the menu bar menu puts the
+        // run loop into event-tracking mode, which would otherwise suspend the
+        // poll for as long as the menu is on screen.
+        RunLoop.main.add(timer, forMode: .common)
+        detectTimer = timer
     }
 
     func stop() {
         detectTimer?.invalidate()
         detectTimer = nil
+        endActivity()
         tearDownCapture()
     }
 
@@ -113,20 +176,28 @@ final class AudioMonitor {
         meter.hasReceivedAudio ? meter.consumePeak() : nil
     }
 
-    /// A meeting app with the microphone open is in a call. Output alone isn't
-    /// enough: a Chrome tab playing a video has output running and no meeting.
-    /// We fall back to output-only if nothing reports input, which covers a
-    /// Zoom lobby and any app whose input state we can't read.
+    /// A meeting app with the microphone open is in a call.
+    ///
+    /// Output alone isn't enough for a browser: a Chrome tab playing a video
+    /// has output running and no meeting, and browsers are what people leave
+    /// playing all day. For a dedicated meeting app, output alone is good
+    /// enough and covers a Zoom lobby, where audio is playing before the mic
+    /// has been opened.
     static func isLiveMeeting(_ processes: [MeetingProcessMonitor.MatchedProcess]) -> Bool {
         if processes.contains(where: \.isRunningInput) { return true }
-        return processes.contains(where: \.isRunningOutput)
+        return processes.contains { $0.isRunningOutput && !MeetingProcessMonitor.isBrowser($0.bundleID) }
     }
 
     // MARK: - Detection
 
     private func detect() {
-        // The override owns capture while it's on; polling would only fight it.
-        guard !listenToAllAudio else { return }
+        // The override owns *detection* while it's on - polling would only
+        // fight it - but the global tap dies the same ways a per-app one does,
+        // so it still gets reconciled.
+        guard !listenToAllAudio else {
+            reconcileCapture(with: nil)
+            return
+        }
 
         let matches: [MeetingProcessMonitor.MatchedProcess]
         do {
@@ -141,14 +212,73 @@ final class AudioMonitor {
             quietPolls = 0
             if !isMeetingActive {
                 isMeetingActive = true
-                startCapture(for: matches)
+                beginActivity()
             }
         } else if isMeetingActive {
             quietPolls += 1
             if quietPolls >= quietPollsBeforeStopping {
                 isMeetingActive = false
                 quietPolls = 0
+                endActivity()
                 tearDownCapture()
+                return
+            }
+        }
+
+        reconcileCapture(with: matches)
+    }
+
+    /// Bring the capture paths into line with what the meeting needs, every
+    /// poll. Idempotent: when everything is healthy this does nothing.
+    ///
+    /// `matches` is the processes to tap, or nil for the "Listen to All Audio"
+    /// override's global tap, which has no process set to drift.
+    private func reconcileCapture(with matches: [MeetingProcessMonitor.MatchedProcess]?) {
+        guard isMeetingActive, !isStarting else { return }
+        if let matches, matches.isEmpty { return }
+
+        let now = Date()
+        let settled = captureStartedAt.map { now.timeIntervalSince($0) > Self.startGrace } ?? false
+
+        // The far end: rebuild the tap if it isn't running, if it has stopped
+        // delivering, or if the processes worth tapping have changed.
+        //
+        // The process comparison is debounced by a poll. Chrome and Slack
+        // spawn and retire audio helpers constantly, and reacting to every
+        // single-poll flicker would rebuild the CoreAudio objects every two
+        // seconds for the length of the meeting.
+        let processesChanged: Bool
+        if let matches {
+            if Set(matches.map(\.id)) == Set(tappedProcesses) {
+                processMismatchSince = nil
+            } else if processMismatchSince == nil {
+                processMismatchSince = now
+            }
+            processesChanged = processMismatchSince
+                .map { now.timeIntervalSince($0) >= detectInterval } ?? false
+        } else {
+            processMismatchSince = nil
+            processesChanged = false
+        }
+
+        let tapNeedsRebuild = !tapSource.isRunning || processesChanged || (settled && !isHearingFarEnd)
+        if tapNeedsRebuild {
+            if let nextStartAttempt, now < nextStartAttempt { return }
+            startCapture(for: matches)
+            return
+        }
+
+        // The near end: the engine stops itself on any audio configuration
+        // change and puts itself back via its own observer, but if that fails
+        // too we notice here.
+        if settled, !microphoneRefused, micSource.isRunning, !isHearingNearEnd {
+            Self.logger.error("Microphone stalled; restarting")
+            do {
+                try micSource.restart()
+            } catch {
+                Self.logger.error("Microphone restart failed: \(String(describing: error), privacy: .public)")
+                microphoneRefused = true
+                status = .microphoneUnavailable(String(describing: error))
             }
         }
     }
@@ -161,9 +291,11 @@ final class AudioMonitor {
         quietPolls = 0
         if listenToAllAudio {
             isMeetingActive = true
+            beginActivity()
             startCapture(for: nil)
         } else {
             isMeetingActive = false
+            endActivity()
             detect()
         }
     }
@@ -174,6 +306,7 @@ final class AudioMonitor {
         guard !isStarting else { return }
         if let matches, matches.isEmpty { return }
         isStarting = true
+        captureStartedAt = Date()
         status = .starting
 
         let processIDs = matches?.map(\.id)
@@ -198,6 +331,7 @@ final class AudioMonitor {
             } catch {
                 Self.logger.error("Process tap failed: \(String(describing: error), privacy: .public)")
                 self.status = .error(String(describing: error))
+                self.noteStartFailure()
                 return
             }
             Self.logger.debug("Process tap started in \(Date().timeIntervalSince(startedAt), format: .fixed(precision: 2), privacy: .public)s")
@@ -207,37 +341,82 @@ final class AudioMonitor {
                 self.tearDownCapture()
                 return
             }
+            self.tappedProcesses = processIDs ?? []
+            self.processMismatchSince = nil
+            self.startFailures = 0
+            self.nextStartAttempt = nil
+            self.captureStartedAt = Date()
 
-            let micGranted = await MicrophoneSource.requestAccess()
-            var micFailure: String?
-            if micGranted {
-                do {
-                    try await Task.detached { try mic.start() }.value
-                } catch {
-                    micFailure = String(describing: error)
+            if !mic.isRunning {
+                let micGranted = await MicrophoneSource.requestAccess()
+                var micFailure: String?
+                if micGranted {
+                    do {
+                        try await Task.detached { try mic.start() }.value
+                    } catch {
+                        micFailure = String(describing: error)
+                    }
+                } else {
+                    micFailure = String(describing: MicrophoneSource.MicError.accessDenied)
                 }
-            } else {
-                micFailure = String(describing: MicrophoneSource.MicError.accessDenied)
+
+                guard self.isMeetingActive else {
+                    self.tearDownCapture()
+                    return
+                }
+
+                if let micFailure {
+                    Self.logger.error("Microphone unavailable: \(micFailure, privacy: .public)")
+                    self.microphoneRefused = !micGranted
+                    self.status = .microphoneUnavailable(micFailure)
+                    return
+                }
+                self.microphoneRefused = false
             }
 
-            guard self.isMeetingActive else {
-                self.tearDownCapture()
+            // A tap rebuilt mid-meeting must not clear a standing microphone
+            // warning: the mic is a separate path and is still refused.
+            if self.microphoneRefused, case .microphoneUnavailable = self.status {
                 return
             }
-
-            if let micFailure {
-                Self.logger.error("Microphone unavailable: \(micFailure, privacy: .public)")
-                self.status = .microphoneUnavailable(micFailure)
-            } else {
-                Self.logger.debug("Microphone started \(Date().timeIntervalSince(startedAt), format: .fixed(precision: 2), privacy: .public)s after capture began")
-                self.status = .running(processBundleIDs: bundleIDs)
-            }
+            Self.logger.debug("Microphone running \(Date().timeIntervalSince(startedAt), format: .fixed(precision: 2), privacy: .public)s after capture began")
+            self.status = .running(processBundleIDs: bundleIDs)
         }
+    }
+
+    /// Back off a tap that won't start: 2s, 4s, 8s, capped at 30s. Without
+    /// this a permanently refused system-audio permission would have us
+    /// rebuilding CoreAudio objects every two seconds for the whole meeting.
+    private func noteStartFailure() {
+        startFailures += 1
+        let delay = min(detectInterval * pow(2, Double(startFailures - 1)), 30)
+        nextStartAttempt = Date().addingTimeInterval(delay)
     }
 
     private func tearDownCapture() {
         tapSource.stop()
         micSource.stop()
+        tappedProcesses = []
+        processMismatchSince = nil
+        captureStartedAt = nil
+        startFailures = 0
+        nextStartAttempt = nil
+        microphoneRefused = false
         status = .waitingForMeeting
+    }
+
+    private func beginActivity() {
+        guard activityToken == nil else { return }
+        activityToken = ProcessInfo.processInfo.beginActivity(
+            options: [.userInitiatedAllowingIdleSystemSleep],
+            reason: "Watching meeting audio"
+        )
+    }
+
+    private func endActivity() {
+        if let activityToken {
+            ProcessInfo.processInfo.endActivity(activityToken)
+            self.activityToken = nil
+        }
     }
 }

@@ -8,7 +8,7 @@ import os
 final class LevelMeter: @unchecked Sendable {
     /// The level reported when nothing has arrived at all: below anything a
     /// real signal produces, so silence and "no audio" read the same to the
-    /// detector (`isReceivingAudio` is what tells those apart for the UI).
+    /// detector (`hasUpdated(within:)` is what tells those apart).
     static let silence: Float = -90
 
     private var lock = os_unfair_lock_s()
@@ -28,8 +28,10 @@ final class LevelMeter: @unchecked Sendable {
         return _hasReceivedAudio
     }
 
-    /// Back to the never-started state. Sources call this on stop so the
-    /// next start waits for real audio again instead of holding a stale level.
+    /// Back to the never-started state. Sources call this on stop, and on
+    /// rebuilding a capture path, so the next start waits for real audio again
+    /// rather than being judged on the stale level and the silence the
+    /// previous incarnation left behind.
     func reset() {
         os_unfair_lock_lock(&lock)
         _dBFS = LevelMeter.silence
@@ -46,13 +48,22 @@ final class LevelMeter: @unchecked Sendable {
         return _dBFS
     }
 
-    /// Whether a level was reported within the last second - lets the UI
-    /// tell "tap running but silent" apart from "tap not delivering
-    /// anything at all", which is a distinct failure mode worth surfacing.
-    var isReceivingAudio: Bool {
+    /// Whether a level was reported within `window` - lets the app tell
+    /// "capture running but silent" apart from "capture not delivering
+    /// anything at all". Both look identical to the detector (a silent room
+    /// and a dead tap are both just low numbers), and they mean opposite
+    /// things, so `AudioMonitor` watches this to notice a capture path that
+    /// has died and `SignalEngine` refuses to show a confident aspect while
+    /// it has gone quiet.
+    ///
+    /// A running IO path reports continuously whether or not there is sound in
+    /// it: the process tap's IOProc fires at the device rate against a real
+    /// output sub-device, and the microphone tap fires at the engine's. So a
+    /// gap here means the path stopped, not that the room went quiet.
+    func hasUpdated(within window: TimeInterval) -> Bool {
         os_unfair_lock_lock(&lock)
         defer { os_unfair_lock_unlock(&lock) }
-        return Date().timeIntervalSince(_lastUpdate) < 1.0
+        return Date().timeIntervalSince(_lastUpdate) < window
     }
 
     /// The loudest level seen since the last call, or the latest level if

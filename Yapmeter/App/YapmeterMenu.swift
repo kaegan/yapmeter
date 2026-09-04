@@ -86,7 +86,11 @@ struct YapmeterMenu: View {
         switch monitor.status {
         case .waitingForMeeting: return "Waiting for a meeting"
         case .starting: return "Starting…"
-        case .running(let bundleIDs): return "Listening to \(appList(bundleIDs))"
+        case .running(let bundleIDs):
+            // The lamp goes dark rather than green when the tap stops
+            // delivering, so say why it went dark mid-meeting.
+            guard engine.isFarEndAudible else { return "Not hearing the meeting audio right now" }
+            return "Listening to \(appList(bundleIDs))"
         case .microphoneUnavailable: return "Microphone unavailable, so the turn timer is off"
         case .error: return "Couldn't listen to the meeting audio"
         }

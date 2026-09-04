@@ -33,6 +33,16 @@ enum MeetingProcessMonitor {
         return bundleID
     }
 
+    /// Prefixes among the above that belong to a general-purpose browser.
+    /// A browser playing audio is usually a video, not a call, so it only
+    /// counts as a meeting once it has the microphone open too. A dedicated
+    /// meeting app playing audio is good enough on its own.
+    static let browserBundleIDPrefixes = ["com.google.Chrome"]
+
+    static func isBrowser(_ bundleID: String) -> Bool {
+        browserBundleIDPrefixes.contains { bundleID.hasPrefix($0) }
+    }
+
     struct MatchedProcess: Identifiable, Sendable {
         let id: AudioObjectID
         let pid: pid_t
@@ -119,7 +129,9 @@ enum MeetingProcessMonitor {
             AudioObjectGetPropertyData(AudioObjectID(kAudioObjectSystemObject), &address, 0, nil, &dataSize, buffer.baseAddress!)
         }
         guard status == noErr else { throw MonitorError.propertyReadFailed(status, address.mSelector) }
-        return ids
+        // The read can return fewer objects than the size query promised; the
+        // tail of the array would otherwise be zeros masquerading as objects.
+        return Array(ids.prefix(Int(dataSize) / MemoryLayout<AudioObjectID>.size))
     }
 
     private static func readBundleID(of objectID: AudioObjectID) throws -> String {

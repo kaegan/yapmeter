@@ -12,8 +12,9 @@ import Foundation
 ///
 /// - the noise floor falls fast and rises slowly, so it settles on the quiet
 ///   parts of the signal and absorbs steady broadband noise (fans, aircon).
-///   It is frozen while we believe speech is present, so a long turn can't
-///   drag the floor up into its own level and mute itself;
+///   Its rise is slowed almost to a stop while we believe speech is present,
+///   so a long turn can't drag the floor up into its own level and mute
+///   itself, but something that turns out to be steady still gets absorbed;
 /// - loudness above `onsetMargin` has to accumulate for `onsetEvidence`
 ///   seconds before it counts as speech, which rejects transients (a cough,
 ///   a door, a mug on a desk) regardless of how loud they are. The evidence
@@ -114,6 +115,9 @@ struct VoiceActivityDetector {
     /// Time constants for the noise floor tracker, in seconds.
     private let fallTau: TimeInterval = 0.2
     private let riseTau: TimeInterval = 8.0
+    /// The rise constant used while we believe speech is present. Very slow,
+    /// but deliberately not infinite: see `trackNoiseFloor`.
+    private let speakingRiseTau: TimeInterval = 60.0
     /// The floor is clamped into this range: below it there is nothing to
     /// measure, above it we'd be treating speech as background.
     private let floorRange: ClosedRange<Float> = (-75)...(-30)
@@ -194,13 +198,22 @@ struct VoiceActivityDetector {
     }
 
     /// Exponential tracker with asymmetric time constants: quick to follow the
-    /// signal down to a new quiet baseline, slow to follow it up. Frozen while
-    /// speech is present so a long turn can't raise the floor to its own level.
+    /// signal down to a new quiet baseline, slow to follow it up, and slower
+    /// still while speech is present so a long turn can't raise the floor to
+    /// its own level.
+    ///
+    /// While speaking the rise is slowed rather than stopped. Freezing it
+    /// outright deadlocks: the release margin is *lower* than the onset
+    /// margin, so any steady signal loud enough to trigger an onset stays
+    /// above the release threshold forever against a floor that can no longer
+    /// move — a far-end fan or an open mic hiss latched the block on
+    /// permanently. A 60s rise absorbs a genuinely steady signal in a couple
+    /// of minutes while leaving real speech alone, because speech dips between
+    /// syllables and the 0.2s fall pulls the floor straight back down.
     private mutating func trackNoiseFloor(dBFS: Float, elapsed: TimeInterval) {
         guard elapsed > 0 else { return }
         let falling = dBFS < noiseFloor
-        if isSpeaking && !falling { return }
-        let tau = falling ? fallTau : riseTau
+        let tau = falling ? fallTau : (isSpeaking ? speakingRiseTau : riseTau)
         let alpha = Float(1 - exp(-elapsed / tau))
         noiseFloor += (dBFS - noiseFloor) * alpha
         noiseFloor = min(max(noiseFloor, floorRange.lowerBound), floorRange.upperBound)

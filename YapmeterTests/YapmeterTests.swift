@@ -392,13 +392,61 @@ final class SignalStateMachineTests: XCTestCase {
         )
         XCTAssertEqual(aspect, .caution)
     }
+
+    /// The dangerous failure. A tap that has stopped delivering reports the
+    /// same low levels as a quiet room, the quiet room decays to `.clear`, and
+    /// green means "go ahead and talk". Losing the far end must read as
+    /// nothing rather than as permission.
+    func testLosingTheFarEndReadsDarkNotClear() {
+        var machine = SignalStateMachine()
+        _ = machine.aspect(meetingActive: true, nearSpeaking: false, farSpeaking: true, now: start)
+        let aspect = machine.aspect(
+            meetingActive: true,
+            hearingFarEnd: false,
+            nearSpeaking: false,
+            farSpeaking: false,
+            now: start.addingTimeInterval(10)
+        )
+        XCTAssertEqual(aspect, .dark)
+    }
+
+    /// Your own turn is measured on the microphone, so it survives the far end
+    /// going away.
+    func testYourOwnTurnSurvivesLosingTheFarEnd() {
+        var machine = SignalStateMachine()
+        let aspect = machine.aspect(
+            meetingActive: true, hearingFarEnd: false, nearSpeaking: true, farSpeaking: false, now: start
+        )
+        XCTAssertEqual(aspect, .speaking)
+    }
+
+    /// Recovering the tap must not leave a stale dwell behind that jumps
+    /// straight to clear.
+    func testRegainingTheFarEndRestartsTheDwell() {
+        var machine = SignalStateMachine()
+        machine.dwell = 1.2
+        _ = machine.aspect(meetingActive: true, nearSpeaking: false, farSpeaking: true, now: start)
+        _ = machine.aspect(
+            meetingActive: true, hearingFarEnd: false, nearSpeaking: false, farSpeaking: false,
+            now: start.addingTimeInterval(30)
+        )
+        let aspect = machine.aspect(
+            meetingActive: true, nearSpeaking: false, farSpeaking: false,
+            now: start.addingTimeInterval(30.02)
+        )
+        XCTAssertEqual(aspect, .caution)
+    }
 }
 
 @MainActor
 final class MeetingDetectionTests: XCTestCase {
-    private func process(output: Bool, input: Bool) -> MeetingProcessMonitor.MatchedProcess {
+    private func process(
+        _ bundleID: String = "us.zoom.xos",
+        output: Bool,
+        input: Bool
+    ) -> MeetingProcessMonitor.MatchedProcess {
         MeetingProcessMonitor.MatchedProcess(
-            id: 1, pid: 100, bundleID: "us.zoom.xos", isRunningOutput: output, isRunningInput: input
+            id: 1, pid: 100, bundleID: bundleID, isRunningOutput: output, isRunningInput: input
         )
     }
 
@@ -417,6 +465,21 @@ final class MeetingDetectionTests: XCTestCase {
 
     func testIdleProcessIsNotAMeeting() {
         XCTAssertFalse(AudioMonitor.isLiveMeeting([process(output: false, input: false)]))
+    }
+
+    /// The output-only fallback used to apply to everything, so a Chrome tab
+    /// playing a video counted as a meeting and held a process tap and the
+    /// microphone open all day.
+    func testBrowserPlayingAudioIsNotAMeeting() {
+        XCTAssertFalse(AudioMonitor.isLiveMeeting([
+            process("com.google.Chrome.helper", output: true, input: false)
+        ]))
+    }
+
+    func testBrowserWithTheMicrophoneOpenIsAMeeting() {
+        XCTAssertTrue(AudioMonitor.isLiveMeeting([
+            process("com.google.Chrome.helper", output: true, input: true)
+        ]))
     }
 }
 
@@ -642,6 +705,18 @@ final class LevelMeterTests: XCTestCase {
         XCTAssertEqual(meter.consumePeak(), LevelMeter.silence)
     }
 
+    /// The liveness check is what tells "quiet room" apart from "dead
+    /// capture" - the two are identical to the detector, and they mean
+    /// opposite things.
+    func testLivenessTracksUpdatesAndIsClearedByReset() {
+        let meter = LevelMeter()
+        XCTAssertFalse(meter.hasUpdated(within: 1))
+        meter.update(dBFS: -40)
+        XCTAssertTrue(meter.hasUpdated(within: 1))
+        meter.reset()
+        XCTAssertFalse(meter.hasUpdated(within: 1))
+    }
+
     func testReturnsPeakSinceLastRead() {
         let meter = LevelMeter()
         meter.update(dBFS: -40)
@@ -662,5 +737,88 @@ final class LevelMeterTests: XCTestCase {
         meter.update(dBFS: -45)
         XCTAssertEqual(meter.consumePeak(), -45)
         XCTAssertEqual(meter.consumePeak(), -45)
+    }
+}
+
+
+// MARK: - Regressions
+
+final class VoiceActivityDetectorRegressionTests: XCTestCase {
+    private let start = Date(timeIntervalSince1970: 0)
+
+    private func feed(
+        _ detector: inout VoiceActivityDetector,
+        dBFS: Float,
+        seconds: TimeInterval,
+        from now: Date
+    ) -> Date {
+        let step = 1.0 / 50.0
+        var now = now
+        let end = now.addingTimeInterval(seconds)
+        while now < end {
+            now = now.addingTimeInterval(step)
+            detector.update(dBFS: dBFS, now: now)
+        }
+        return now
+    }
+
+    /// A speech envelope: syllables with dips between them and the odd breath.
+    /// Real speech is never a constant level, and that is exactly what lets
+    /// the noise floor stay below it.
+    ///
+    /// The breath is 0.2s, inside the detector's 0.7s hangover. A longer hole
+    /// legitimately ends the turn - that is what the hangover is for - so
+    /// stretching it here would be testing the hangover, not the noise floor.
+    private func speak(
+        _ detector: inout VoiceActivityDetector,
+        peak: Float,
+        seconds: TimeInterval,
+        from now: Date
+    ) -> Date {
+        let step = 1.0 / 50.0
+        var now = now
+        let end = now.addingTimeInterval(seconds)
+        var frame = 0
+        while now < end {
+            now = now.addingTimeInterval(step)
+            frame += 1
+            let syllable = frame % 10
+            let dip: Float = syllable < 3 ? -18 : (syllable < 5 ? -7 : 0)
+            let breath: Float = (frame % 400) < 10 ? -30 : 0
+            detector.update(dBFS: peak + dip + breath, now: now)
+        }
+        return now
+    }
+
+    /// The floor used to be frozen outright while speaking. Because the
+    /// release margin is lower than the onset margin, any steady signal loud
+    /// enough to trigger an onset then stayed above the release threshold
+    /// against a floor that could never move again - a far-end fan or an open
+    /// mic hiss latched the block occupied for the rest of the meeting.
+    func testSteadyToneIsEventuallyAbsorbedRatherThanLatchingForever() {
+        var detector = VoiceActivityDetector()
+        var now = feed(&detector, dBFS: -70, seconds: 3, from: start)
+        now = feed(&detector, dBFS: -35, seconds: 5, from: now)
+        XCTAssertTrue(detector.isSpeaking, "an onset should still fire")
+        _ = feed(&detector, dBFS: -35, seconds: 175, from: now)
+        XCTAssertFalse(detector.isSpeaking, "steady noise must be absorbed, not latched")
+    }
+
+    /// The counterweight to the test above: the floor must not climb into a
+    /// long turn and mute the speaker mid-sentence.
+    ///
+    /// The margin here is wide - this passes at rise constants from 2s to 60s
+    /// - because it is the 0.2s *fall* that does the work, dragging the floor
+    /// back down on every syllable dip. That is the mechanism the slowed rise
+    /// relies on, so this test guards it rather than the rise constant itself.
+    func testLongMonologueIsNeverLost() {
+        var detector = VoiceActivityDetector()
+        var now = feed(&detector, dBFS: -70, seconds: 3, from: start)
+        var lost = 0
+        for _ in 0..<90 {
+            now = speak(&detector, peak: -30, seconds: 1, from: now)
+            if !detector.isSpeaking { lost += 1 }
+        }
+        XCTAssertEqual(lost, 0, "lost the speaker during a 90-second turn")
     }
 }

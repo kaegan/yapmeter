@@ -33,13 +33,16 @@ final class ProcessTapSource: @unchecked Sendable {
     private var aggregateDeviceID: AudioObjectID = kAudioObjectUnknown
     private var ioProcID: AudioDeviceIOProcID?
     private let ioQueue = DispatchQueue(label: "fyi.kaegan.yapmeter.audio-io", qos: .userInteractive)
+    /// `start` runs on a detached task while `stop` can arrive from the main
+    /// actor, so the running flag and the device IDs need guarding.
+    private let lock = NSLock()
+    private var _isRunning = false
 
-    private(set) var isRunning = false
+    var isRunning: Bool { lock.withLock { _isRunning } }
 
     /// Builds a tap covering exactly the given processes and starts pulling
-    /// audio. Intended to be called from a single serial caller
-    /// (`AudioMonitor`) - it isn't safe to call concurrently with itself or
-    /// with `stop()`.
+    /// audio, replacing any tap already running. `AudioMonitor` calls this
+    /// again whenever the tap dies or the processes worth tapping change.
     func start(processes: [AudioObjectID]) throws {
         guard !processes.isEmpty else { throw TapError.noMatchingProcesses }
         try start(description: CATapDescription(stereoMixdownOfProcesses: processes))
@@ -53,7 +56,18 @@ final class ProcessTapSource: @unchecked Sendable {
     }
 
     private func start(description: CATapDescription) throws {
-        stop()
+        lock.lock()
+        defer { lock.unlock() }
+        // Torn down inline rather than through `stop()`: `NSLock` isn't
+        // recursive, and we already hold it.
+        if _isRunning {
+            tearDownDevices()
+            _isRunning = false
+        }
+        // Don't let the level or the silence left behind by the previous
+        // incarnation count against the new one when the watchdog checks
+        // for liveness.
+        levelMeter.reset()
 
         description.name = "Yapmeter Tap"
         description.isPrivate = true
@@ -107,13 +121,15 @@ final class ProcessTapSource: @unchecked Sendable {
             tearDownDevices()
             throw TapError.startFailed(status)
         }
-        isRunning = true
+        _isRunning = true
     }
 
     func stop() {
-        guard isRunning else { return }
+        lock.lock()
+        defer { lock.unlock() }
+        guard _isRunning else { return }
         tearDownDevices()
-        isRunning = false
+        _isRunning = false
         levelMeter.reset()
     }
 

@@ -15,6 +15,10 @@ final class SignalEngine {
     private(set) var speakingSeconds: Int?
     private(set) var farEndSpeaking = false
     private(set) var nearEndSpeaking = false
+    /// Mirrors `AudioMonitor.isHearingFarEnd` as observable state, so the menu
+    /// can explain a dark lamp during a meeting. The monitor's own property
+    /// reads a lock rather than observable storage, so SwiftUI can't track it.
+    private(set) var isFarEndAudible = true
 
     var sensitivity: VoiceActivityDetector.Sensitivity {
         didSet {
@@ -72,9 +76,7 @@ final class SignalEngine {
     }
 
     private func tick(now: Date = Date()) {
-        let meetingActive = audioMonitor.isMeetingActive
-
-        guard meetingActive else {
+        guard audioMonitor.isMeetingActive else {
             // No signal left to decay: drop straight out rather than letting
             // the hangover keep a stale "speaking" alive across meetings.
             farEndDetector.reset()
@@ -83,6 +85,7 @@ final class SignalEngine {
             update(\.speakingSeconds, to: nil)
             update(\.farEndSpeaking, to: false)
             update(\.nearEndSpeaking, to: false)
+            update(\.isFarEndAudible, to: true)
             update(\.aspect, to: stateMachine.aspect(
                 meetingActive: false, nearSpeaking: false, farSpeaking: false, now: now
             ))
@@ -92,17 +95,32 @@ final class SignalEngine {
         // An end that hasn't delivered audio yet keeps its last decision
         // (false, after a reset) rather than being fed silence it never heard.
         let levels = audioMonitor.sampleLevels()
-        let far = levels.farEnd.map { farEndDetector.update(dBFS: $0, now: now) } ?? farEndDetector.isSpeaking
         let near = levels.nearEnd.map { nearEndDetector.update(dBFS: $0, now: now) } ?? nearEndDetector.isSpeaking
+
+        // A far-end tap that has stopped delivering feeds the detector nothing
+        // but silence, which would decay into a confident "clear". Reset it
+        // instead, so it comes back from scratch when the tap is repaired.
+        let hearingFarEnd = audioMonitor.isHearingFarEnd
+        var far = false
+        if hearingFarEnd {
+            far = levels.farEnd.map { farEndDetector.update(dBFS: $0, now: now) } ?? farEndDetector.isSpeaking
+        } else {
+            farEndDetector.reset()
+        }
         logLevels(levels, far: far, near: near, now: now)
 
         update(\.farEndSpeaking, to: far)
         update(\.nearEndSpeaking, to: near)
+        update(\.isFarEndAudible, to: hearingFarEnd)
         update(\.speakingSeconds, to: turnClock.update(
             speaking: near, speechStartedAt: nearEndDetector.speechStartedAt, now: now
         ))
         update(\.aspect, to: stateMachine.aspect(
-            meetingActive: true, nearSpeaking: near, farSpeaking: far, now: now
+            meetingActive: true,
+            hearingFarEnd: hearingFarEnd,
+            nearSpeaking: near,
+            farSpeaking: far,
+            now: now
         ))
     }
 

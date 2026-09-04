@@ -12,8 +12,15 @@ struct SignalStateMachine {
 
     private var farEndFellSilentAt: Date?
 
+    /// `hearingFarEnd` is the fail-safe input. A capture path that has died
+    /// reports the same low levels as a quiet room, and a quiet room is what
+    /// this machine turns into a green *clear to speak*. Confidently telling
+    /// someone to talk over a colleague because the tap fell over is the worst
+    /// thing the app can do, so when we can't hear the far end the block
+    /// reports nothing at all rather than guessing.
     mutating func aspect(
         meetingActive: Bool,
+        hearingFarEnd: Bool = true,
         nearSpeaking: Bool,
         farSpeaking: Bool,
         now: Date = Date()
@@ -21,6 +28,13 @@ struct SignalStateMachine {
         guard meetingActive else {
             farEndFellSilentAt = nil
             return .dark
+        }
+
+        // Your own turn is measured on the microphone, independently of the
+        // far end, so it survives the far end going dark.
+        guard hearingFarEnd else {
+            farEndFellSilentAt = nil
+            return nearSpeaking ? .speaking : .dark
         }
 
         if farSpeaking {
