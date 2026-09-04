@@ -22,6 +22,17 @@ enum MeetingProcessMonitor {
         "com.apple.avconferenced",
     ]
 
+    /// The status line says "Listening to Zoom", not "us.zoom.xos".
+    static func appName(forBundleID bundleID: String) -> String {
+        if bundleID.hasPrefix("us.zoom.") { return "Zoom" }
+        if bundleID.hasPrefix("com.google.Chrome") { return "Chrome" }
+        if bundleID.hasPrefix("com.tinyspeck.slackmacgap") { return "Slack" }
+        if bundleID.hasPrefix("com.apple.FaceTime") || bundleID.hasPrefix("com.apple.avconferenced") {
+            return "FaceTime"
+        }
+        return bundleID
+    }
+
     struct MatchedProcess: Identifiable, Sendable {
         let id: AudioObjectID
         let pid: pid_t

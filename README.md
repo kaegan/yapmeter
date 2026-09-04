@@ -12,8 +12,9 @@ railway block signal, whether it's safe to speak:
 
 The menu bar lamp is the whole display. When there's no meeting it shows a
 pair of speech bubbles instead, tinted like the system's own menu bar icons.
-Clicking it opens a standard menu with settings only: sensitivity, a manual
-override, and Quit.
+Clicking it opens a standard menu: a status line saying what the app is
+doing ("Waiting for a meeting", "Listening to Zoom"), then a **Sensitivity**
+submenu, a **Listen to All Audio** submenu, **Launch at Login**, and Quit.
 
 It taps the *output* audio of your meeting app (Zoom, Chrome/Meet, Slack
 huddles) with a CoreAudio process tap for the far end, and the microphone for
