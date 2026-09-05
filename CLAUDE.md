@@ -14,6 +14,6 @@ way.
 
 The backlog is the Notion database "Yapmeter backlog"; tickets are `YB-n`.
 When asked to plan or work on one ("plan YB-12", "work on YB-12", "plan
-everything in Next Up"), invoke the `yb` skill in `.claude/skills/yb/`. It
+everything in Next Up", "revise YB-12"), invoke the `yb` skill in `.claude/skills/yb/`. It
 defines the status transitions, the branch and PR conventions, and the rule
 that nothing is built from a ticket without a `## Plan` in its page body.
