@@ -66,6 +66,21 @@ jobs:
             echo "::error::Empty or unset repository secrets:$MISSING — re-set each with 'gh secret set NAME'."
             exit 1
           fi
+          # A password copied out of a browser often brings a space or a
+          # newline with it. GitHub masks the secret in the log but not the
+          # stray character in front of it, so the giveaway is an env line
+          # with one space too many — which is exactly how the second v0.1.0
+          # attempt failed. None of these secrets can legitimately contain
+          # whitespace, so this is an error rather than a guess.
+          for NAME in APPLE_ID APPLE_TEAM_ID APPLE_APP_SPECIFIC_PASSWORD; do
+            # Compared against its own stripped form rather than grepped:
+            # grep never sees a trailing newline, because that newline is
+            # what ends the line it would have to match inside.
+            if [ "$(printf '%s' "${!NAME}" | tr -d '[:space:]')" != "${!NAME}" ]; then
+              echo "::error::$NAME has whitespace in it. Re-set it stripped, e.g. 'pbpaste | tr -d \"[:space:]\" | gh secret set $NAME'."
+              exit 1
+            fi
+          done
           # Apple issues app-specific passwords as four groups of four lower
           # case letters. A warning rather than an error because the shape is
           # Apple's to change, but nine times in ten a password that fails
