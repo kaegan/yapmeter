@@ -254,8 +254,19 @@ jobs:
           VERSION="${{ steps.version.outputs.version }}"
           # The live feed is the source of truth for what has already shipped,
           # so past releases survive without anything being committed back to
-          # the repo. A first release, or an unreachable feed, starts fresh.
-          curl -fsSL https://yapmeter.com/appcast.xml -o "$RUNNER_TEMP/appcast.xml" || : > "$RUNNER_TEMP/appcast.xml"
+          # the repo. A first release starts from an empty feed.
+          if ! curl -fsSL https://yapmeter.com/appcast.xml -o "$RUNNER_TEMP/appcast.xml"; then
+            : > "$RUNNER_TEMP/appcast.xml"
+            # Starting fresh is right for the first release and wrong for
+            # every one after it: the new feed would list this version alone
+            # and every shipped release would vanish from it. The failure is
+            # invisible either way, so say which case this is. A warning
+            # rather than an error because the feed that comes out still
+            # updates users correctly — it is the history that is lost.
+            if [ "$(gh release list --limit 2 --json tagName -q '. | length')" -gt 1 ]; then
+              echo "::warning::https://yapmeter.com/appcast.xml could not be fetched, so the feed was rebuilt from this release alone and earlier versions have been dropped from it. Check the site rewrite and that release assets are publicly readable."
+            fi
+          fi
           gh release view "$GITHUB_REF_NAME" --json body -q .body > "$RUNNER_TEMP/notes.md"
           python3 scripts/appcast.py \
             --appcast "$RUNNER_TEMP/appcast.xml" \
