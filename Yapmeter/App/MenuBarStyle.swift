@@ -46,7 +46,7 @@ enum GlyphStyle: String, CaseIterable, Sendable {
 enum LampPalette: String, CaseIterable, Sendable {
     /// macOS system red, yellow, green and blue: what the app shipped with.
     case system
-    /// Round one's pet board: bubblegum, butter, mint and sky.
+    /// Round one's pet board: strawberry, butter, mint and sky.
     case pet
     /// Round one's railway board: the aspect colours of a colour-light signal.
     case railway
@@ -74,7 +74,7 @@ enum LampPalette: String, CaseIterable, Sendable {
     private var red: NSColor {
         switch self {
         case .system: return .systemRed
-        case .pet: return NSColor(hex: 0xFF8FB1)
+        case .pet: return NSColor(hex: 0xFF5C7A)
         case .railway: return NSColor(hex: 0xE8352B)
         }
     }

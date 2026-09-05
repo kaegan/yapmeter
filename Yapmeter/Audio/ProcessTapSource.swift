@@ -32,20 +32,30 @@ final class ProcessTapSource: @unchecked Sendable {
     private var tapID: AudioObjectID = kAudioObjectUnknown
     private var aggregateDeviceID: AudioObjectID = kAudioObjectUnknown
     private var ioProcID: AudioDeviceIOProcID?
-    private let ioQueue = DispatchQueue(label: "fyi.kaegan.semaphore.audio-io", qos: .userInteractive)
+    private let ioQueue = DispatchQueue(label: "fyi.kaegan.yapmeter.audio-io", qos: .userInteractive)
 
     private(set) var isRunning = false
 
     /// Builds a tap covering exactly the given processes and starts pulling
-    /// audio. Intended to be called from a single serial caller (the
-    /// `AudioMonitor` view model's toggle button) - it isn't safe to call
-    /// concurrently with itself or with `stop()`.
+    /// audio. Intended to be called from a single serial caller
+    /// (`AudioMonitor`) - it isn't safe to call concurrently with itself or
+    /// with `stop()`.
     func start(processes: [AudioObjectID]) throws {
         guard !processes.isEmpty else { throw TapError.noMatchingProcesses }
+        try start(description: CATapDescription(stereoMixdownOfProcesses: processes))
+    }
+
+    /// Taps everything the Mac is playing, for calls in apps we don't know
+    /// how to detect. Music or a video will drive the signal too, which is
+    /// why this is only ever switched on by hand.
+    func startGlobal() throws {
+        try start(description: CATapDescription(stereoGlobalTapButExcludeProcesses: []))
+    }
+
+    private func start(description: CATapDescription) throws {
         stop()
 
-        let description = CATapDescription(stereoMixdownOfProcesses: processes)
-        description.name = "Semaphore Tap"
+        description.name = "Yapmeter Tap"
         description.isPrivate = true
         description.muteBehavior = .unmuted
         let uuid = UUID()
@@ -58,7 +68,7 @@ final class ProcessTapSource: @unchecked Sendable {
 
         let outputUID = try MeetingProcessMonitor.defaultOutputDeviceUID()
         let aggregateDescription: [String: Any] = [
-            kAudioAggregateDeviceNameKey as String: "Semaphore Aggregate",
+            kAudioAggregateDeviceNameKey as String: "Yapmeter Aggregate",
             kAudioAggregateDeviceUIDKey as String: UUID().uuidString,
             kAudioAggregateDeviceMainSubDeviceKey as String: outputUID,
             kAudioAggregateDeviceIsPrivateKey as String: true,
@@ -104,6 +114,7 @@ final class ProcessTapSource: @unchecked Sendable {
         guard isRunning else { return }
         tearDownDevices()
         isRunning = false
+        levelMeter.reset()
     }
 
     deinit {

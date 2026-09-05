@@ -1,14 +1,14 @@
 import SwiftUI
 
 @main
-struct SemaphoreApp: App {
+struct YapmeterApp: App {
     @State private var engine = SignalEngine()
     @State private var style = MenuBarStyle()
     @State private var preview = AspectPreview()
 
     var body: some Scene {
         MenuBarExtra {
-            SemaphoreMenu(engine: engine, style: style, preview: preview)
+            YapmeterMenu(engine: engine, style: style, preview: preview)
         } label: {
             Image(nsImage: SignalHeadRenderer.menuBarImage(
                 for: preview.isRunning ? preview.aspect : engine.aspect,

@@ -1,21 +1,21 @@
-name: Semaphore
+name: Yapmeter
 options:
   bundleIdPrefix: fyi.kaegan
   deploymentTarget:
     macOS: "14.2"
 targets:
-  Semaphore:
+  Yapmeter:
     type: application
     platform: macOS
     sources:
-      - path: Semaphore
+      - path: Yapmeter
         excludes:
           - Info.plist
     settings:
       base:
-        PRODUCT_BUNDLE_IDENTIFIER: fyi.kaegan.semaphore
-        PRODUCT_NAME: Semaphore
-        INFOPLIST_FILE: Semaphore/Info.plist
+        PRODUCT_BUNDLE_IDENTIFIER: fyi.kaegan.yapmeter
+        PRODUCT_NAME: Yapmeter
+        INFOPLIST_FILE: Yapmeter/Info.plist
         GENERATE_INFOPLIST_FILE: NO
         MARKETING_VERSION: "0.1.0"
         CURRENT_PROJECT_VERSION: "1"
@@ -25,29 +25,29 @@ targets:
         ENABLE_APP_SANDBOX: NO
         CODE_SIGN_STYLE: Automatic
         MACOSX_DEPLOYMENT_TARGET: "14.2"
-  SemaphoreTests:
+  YapmeterTests:
     type: bundle.unit-test
     platform: macOS
     sources:
-      - SemaphoreTests
+      - YapmeterTests
     dependencies:
-      - target: Semaphore
+      - target: Yapmeter
     settings:
       base:
         SWIFT_VERSION: "6.0"
         MACOSX_DEPLOYMENT_TARGET: "14.2"
         GENERATE_INFOPLIST_FILE: YES
-        PRODUCT_BUNDLE_IDENTIFIER: fyi.kaegan.semaphore.tests
+        PRODUCT_BUNDLE_IDENTIFIER: fyi.kaegan.yapmeter.tests
         CODE_SIGN_STYLE: Automatic
 schemes:
-  Semaphore:
+  Yapmeter:
     build:
       targets:
-        Semaphore: all
-        SemaphoreTests: [test]
+        Yapmeter: all
+        YapmeterTests: [test]
     run:
       config: Debug
     test:
       config: Debug
       targets:
-        - SemaphoreTests
+        - YapmeterTests

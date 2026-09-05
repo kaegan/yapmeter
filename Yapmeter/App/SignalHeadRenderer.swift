@@ -93,14 +93,34 @@ enum SignalHeadRenderer {
     private static func glyphOnlyImage(for aspect: Aspect, glyph: GlyphStyle, palette: LampPalette) -> NSImage {
         let key = CacheKey(aspect: aspect, glyph: glyph, palette: palette)
         if let cached = cache[key] { return cached }
-        let width = horizontalPadding * 2 + width(of: glyph)
-        let image = NSImage(size: NSSize(width: width, height: imageHeight), flipped: true) { _ in
-            draw(glyph, aspect: aspect, palette: palette, stage: .fresh, atX: horizontalPadding)
-            return true
+        let image: NSImage
+        if glyph == .lamp, aspect == .dark {
+            image = idleLampImage()
+        } else {
+            let width = horizontalPadding * 2 + width(of: glyph)
+            image = NSImage(size: NSSize(width: width, height: imageHeight), flipped: true) { _ in
+                draw(glyph, aspect: aspect, palette: palette, stage: .fresh, atX: horizontalPadding)
+                return true
+            }
+            image.isTemplate = false
         }
-        image.isTemplate = false
         image.accessibilityDescription = aspect.displayName
         cache[key] = image
+        return image
+    }
+
+    /// The Lamp glyph with no meeting: two speech bubbles, the conversation
+    /// the signal is for, as a template image so the menu bar tints it like
+    /// its own icons (and highlights it when the menu is open). A lone ring,
+    /// the earlier idle state, read as "broken" rather than "waiting". The
+    /// other glyphs draw their own idle state, asleep or out of service.
+    private static func idleLampImage() -> NSImage {
+        let configuration = NSImage.SymbolConfiguration(pointSize: 13, weight: .medium)
+        // Force-unwrapped: the symbol has shipped since macOS 11 and the
+        // deployment target is 14.2.
+        let image = NSImage(systemSymbolName: "bubble.left.and.bubble.right", accessibilityDescription: nil)!
+            .withSymbolConfiguration(configuration)!
+        image.isTemplate = true
         return image
     }
 
@@ -194,9 +214,9 @@ enum SignalHeadRenderer {
         context.restoreGState()
     }
 
-    /// A lit lamp is a filled disc with a soft glow behind it. A dark signal
-    /// draws as an outline only, so the status item still has something to
-    /// look at and to click when no meeting is running.
+    /// A lit lamp is a filled disc with a soft glow behind it. The idle lamp
+    /// is normally `idleLampImage()`; the outline here only appears if a dark
+    /// aspect ever arrives with a clock beside it.
     private static func drawLamp(_ pen: Pen, _ phase: Phase) {
         let disc = circle(8, 8, 5.5)
         guard phase != .dark else {
