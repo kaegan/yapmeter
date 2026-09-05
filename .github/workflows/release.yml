@@ -162,7 +162,14 @@ jobs:
           SPARKLE_PRIVATE_KEY: ${{ secrets.SPARKLE_PRIVATE_KEY }}
         run: |
           SIGN_UPDATE="$(find build/DerivedData/SourcePackages/artifacts -name sign_update -not -path '*old_dsa*' | head -1)"
-          SIGNATURE="$("$SIGN_UPDATE" -s "$SPARKLE_PRIVATE_KEY" -p "${{ steps.package.outputs.zip }}")"
+          # --ed-key-file - reads the key from stdin. Sparkle removed the
+          # option that took it as an argument, and stdin is the better shape
+          # anyway: the key never lands on the runner's disk or in its argv.
+          SIGNATURE="$(echo "$SPARKLE_PRIVATE_KEY" | "$SIGN_UPDATE" --ed-key-file - -p "${{ steps.package.outputs.zip }}")"
+          if [ -z "$SIGNATURE" ]; then
+            echo "::error::sign_update produced no signature."
+            exit 1
+          fi
           # The signature is not a secret — it is published in the appcast —
           # but the key it came from must never reach the log.
           echo "signature=$SIGNATURE" >> "$GITHUB_OUTPUT"
