@@ -127,7 +127,10 @@ One-time setup, in this order:
    certificate exported as .p12, then `base64 -i cert.p12`),
    `CERTIFICATE_P12_PASSWORD`, `APPLE_TEAM_ID`, `APPLE_ID`,
    `APPLE_APP_SPECIFIC_PASSWORD` (from appleid.apple.com, not your account
-   password), and `SPARKLE_PRIVATE_KEY`.
+   password), and `SPARKLE_PRIVATE_KEY`. The workflow checks all six are
+   non-empty before it builds anything: `gh secret set NAME < missing-file`
+   stores an empty string and still prints a tick, and an empty one otherwise
+   surfaces as a 401 from the notary a quarter of an hour in.
 
 3. **The feed.** `yapmeter.com/appcast.xml` rewrites to the appcast attached to
    the newest GitHub release, so the URL baked into every shipped binary is one

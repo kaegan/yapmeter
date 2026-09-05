@@ -42,6 +42,39 @@ jobs:
             exit 1
           fi
 
+      - name: Check the release secrets are actually set
+        env:
+          APPLE_ID: ${{ secrets.APPLE_ID }}
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+          APPLE_APP_SPECIFIC_PASSWORD: ${{ secrets.APPLE_APP_SPECIFIC_PASSWORD }}
+          SPARKLE_PRIVATE_KEY: ${{ secrets.SPARKLE_PRIVATE_KEY }}
+          CERTIFICATE_P12_BASE64: ${{ secrets.CERTIFICATE_P12_BASE64 }}
+          CERTIFICATE_P12_PASSWORD: ${{ secrets.CERTIFICATE_P12_PASSWORD }}
+        run: |
+          # An empty secret looks exactly like a set one in the UI, and
+          # `gh secret set X < missing-file` stores an empty string while
+          # still printing a tick. Notarization is fifteen minutes into the
+          # job and signing is later still, so check the whole set up front
+          # rather than finding out after the archive has been built.
+          MISSING=""
+          for NAME in APPLE_ID APPLE_TEAM_ID APPLE_APP_SPECIFIC_PASSWORD \
+                      SPARKLE_PRIVATE_KEY CERTIFICATE_P12_BASE64 \
+                      CERTIFICATE_P12_PASSWORD; do
+            [ -n "${!NAME}" ] || MISSING="$MISSING $NAME"
+          done
+          if [ -n "$MISSING" ]; then
+            echo "::error::Empty or unset repository secrets:$MISSING — re-set each with 'gh secret set NAME'."
+            exit 1
+          fi
+          # Apple issues app-specific passwords as four groups of four lower
+          # case letters. A warning rather than an error because the shape is
+          # Apple's to change, but nine times in ten a password that fails
+          # this is the Apple ID password pasted in by mistake, and that costs
+          # a whole build to discover at the notary.
+          if ! printf '%s' "$APPLE_APP_SPECIFIC_PASSWORD" | grep -Eq '^[a-z]{4}(-[a-z]{4}){3}$'; then
+            echo "::warning::APPLE_APP_SPECIFIC_PASSWORD is not in Apple's xxxx-xxxx-xxxx-xxxx shape. It must be an app-specific password from appleid.apple.com, not your Apple ID password."
+          fi
+
       - name: Install XcodeGen
         run: brew install xcodegen
 
@@ -169,6 +202,12 @@ jobs:
           SPARKLE_PRIVATE_KEY: ${{ secrets.SPARKLE_PRIVATE_KEY }}
         run: |
           SIGN_UPDATE="$(find build/DerivedData/SourcePackages/artifacts -name sign_update -not -path '*old_dsa*' | head -1)"
+          # The tool ships inside the resolved Sparkle package, so it only
+          # exists because the archive above used this derived data path.
+          if [ -z "$SIGN_UPDATE" ]; then
+            echo "::error::sign_update not found under build/DerivedData/SourcePackages/artifacts."
+            exit 1
+          fi
           # --ed-key-file - reads the key from stdin. Sparkle removed the
           # option that took it as an argument, and stdin is the better shape
           # anyway: the key never lands on the runner's disk or in its argv.
