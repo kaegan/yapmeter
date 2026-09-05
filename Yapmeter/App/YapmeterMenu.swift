@@ -9,6 +9,7 @@ struct YapmeterMenu: View {
     @Bindable var engine: SignalEngine
     @Bindable var style: MenuBarStyle
     @Bindable var preview: AspectPreview
+    @Bindable var updater: Updater
 
     var body: some View {
         Text(statusText)
@@ -62,6 +63,8 @@ struct YapmeterMenu: View {
             Toggle("Preview states", isOn: $preview.isOn)
         }
         Divider()
+        Button("Check for Updates…") { updater.checkForUpdates() }
+            .disabled(!updater.canCheckForUpdates)
         // An LSUIElement app has no app menu, so this is the only ⌘Q there is.
         Button("Quit Yapmeter") { NSApp.terminate(nil) }
             .keyboardShortcut("q")

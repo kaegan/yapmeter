@@ -5,10 +5,11 @@ struct YapmeterApp: App {
     @State private var engine = SignalEngine()
     @State private var style = MenuBarStyle()
     @State private var preview = AspectPreview()
+    @State private var updater = Updater()
 
     var body: some Scene {
         MenuBarExtra {
-            YapmeterMenu(engine: engine, style: style, preview: preview)
+            YapmeterMenu(engine: engine, style: style, preview: preview, updater: updater)
         } label: {
             Image(nsImage: SignalHeadRenderer.menuBarImage(
                 for: preview.isRunning ? preview.aspect : engine.aspect,

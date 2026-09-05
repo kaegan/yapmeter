@@ -30,5 +30,13 @@
 	<string>Yapmeter listens to your microphone so it can tell when you are the one speaking and time your turn. Nothing is recorded, transcribed, or sent anywhere.</string>
 	<key>NSAudioCaptureUsageDescription</key>
 	<string>Yapmeter listens to the audio your meeting app plays so it can tell when the other person is speaking. Nothing is recorded, transcribed, or sent anywhere.</string>
+	<key>SUFeedURL</key>
+	<string>https://yapmeter.com/appcast.xml</string>
+	<key>SUPublicEDKey</key>
+	<string>REPLACE_WITH_SPARKLE_PUBLIC_ED_KEY</string>
+	<key>SUEnableAutomaticChecks</key>
+	<true/>
+	<key>SUScheduledCheckInterval</key>
+	<integer>86400</integer>
 </dict>
 </plist>
