@@ -9,3 +9,11 @@ the same PR.
 Build and test: `./scripts/build.sh` (see README). Tests are in
 `YapmeterTests/` and the signal logic is pure and time-injected; keep it that
 way.
+
+## Backlog tickets
+
+The backlog is the Notion database "Yapmeter backlog"; tickets are `YB-n`.
+When asked to plan or work on one ("plan YB-12", "work on YB-12", "plan
+everything in Next Up"), invoke the `yb` skill in `.claude/skills/yb/`. It
+defines the status transitions, the branch and PR conventions, and the rule
+that nothing is built from a ticket without a `## Plan` in its page body.
