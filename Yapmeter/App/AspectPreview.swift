@@ -1,9 +1,9 @@
 import Foundation
 import Observation
 
-/// Walks the lamp through every state on a timer, so a glyph and palette can
-/// be judged in the real menu bar without waiting for a meeting. Nothing here
-/// touches the audio engine: while the preview runs the app draws these
+/// Walks the pet through every state on a timer, so a change to his drawing
+/// can be judged in the real menu bar without waiting for a meeting. Nothing
+/// here touches the audio engine: while the preview runs the app draws these
 /// values instead of the engine's, and it stops itself the moment a real
 /// meeting starts.
 @MainActor
@@ -24,7 +24,7 @@ final class AspectPreview {
 
     /// One frame per second, in the order a meeting would show them. The
     /// speaking runs let the clock be seen counting and visit each of the
-    /// pets' turn stages: fresh, tiring at two minutes, full at four.
+    /// pet's turn stages: fresh, tiring at two minutes, full at four.
     static let frames: [(aspect: Aspect, speakingSeconds: Int?)] = {
         var frames: [(aspect: Aspect, speakingSeconds: Int?)] = []
         func hold(_ aspect: Aspect, for seconds: Int) {

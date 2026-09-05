@@ -1,29 +1,29 @@
 # Yapmeter
 
-A macOS menubar app that watches the audio of your meeting and shows you, as a
-railway block signal, whether it's safe to speak:
+A macOS menubar app that watches the audio of your meeting and shows you,
+through Yap, a small pet in your menu bar, whether it's safe to speak. The
+states are a railway block signal's:
 
-- **Dark** — no meeting. Out of service.
+- **Dark** — no meeting. Yap is asleep.
 - **Red (occupied)** — the other person is talking.
 - **Yellow (caution)**, then **double yellow (preliminary)** — they've
   paused; the block is clearing.
 - **Green (clear)** — they've stopped. Go.
 - **Blue** — you have the floor, with a running timer for your turn.
 
-The menu bar lamp is the whole display. When there's no meeting it shows a
-pair of speech bubbles instead, tinted like the system's own menu bar icons.
-Clicking it opens a standard menu: a status line saying what the app is
-doing ("Waiting for a meeting", "Listening to Zoom"), then a **Sensitivity**
-submenu, a **Listen to All Audio** submenu, **Launch at Login**, a
-**Developer** submenu, and Quit.
+The pet is the whole display. His face carries the state as well as his
+colour (a hand over the mouth while they talk, a smile when they've
+finished, a yapping mouth that wears out over a long turn), and when there's
+no meeting he sleeps in the menu bar's own label colour, like the icons
+around him. Clicking him opens a standard menu: a status line saying what
+the app is doing ("Waiting for a meeting", "Listening to Zoom"), then a
+**Sensitivity** submenu, a **Listen to All Audio** submenu, **Launch at
+Login**, a **Developer** submenu, and Quit.
 
-The Developer submenu holds the branding trial: **Glyph** (eight drawings:
-the original lamp, four pets, three railway signals), **Colours** (three
-palettes), and **Preview states**, which walks the lamp through the whole
-sequence, clock included, so a glyph can be judged without a meeting. The
-preview switches itself off when a real meeting starts. Every glyph encodes
-the state in its shape as well as its colour, and each draws its own idle
-state in the menu bar's label colour; the speech bubbles belong to the Lamp.
+The Developer submenu holds **Preview states**, which walks the pet through
+the whole sequence, clock included, so a change to his drawing can be judged
+without a meeting. The preview switches itself off when a real meeting
+starts.
 
 It taps the *output* audio of your meeting app (Zoom, Chrome/Meet, Slack
 huddles) with a CoreAudio process tap for the far end, and the microphone for
