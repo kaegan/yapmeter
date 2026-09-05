@@ -31,6 +31,12 @@ you, runs a voice activity detector over each, and drives a small state
 machine. Nothing is recorded, transcribed, or leaves your Mac — it only ever
 looks at whether there's speech-shaped energy in the signal.
 
+## Constitution
+
+[CONSTITUTION.md](CONSTITUTION.md) is the one page every feature has to fit on:
+what the app measures and refuses to measure, the privacy promises, and how
+Yap talks. Read it before proposing anything new.
+
 ## Meeting detection
 
 The app starts and stops itself. It polls CoreAudio's process list every two
