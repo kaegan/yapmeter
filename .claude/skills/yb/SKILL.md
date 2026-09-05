@@ -1,6 +1,6 @@
 ---
 name: yb
-description: Plan, revise, or build one Yapmeter backlog ticket (YB-n) from the Notion backlog. Use when Kaegan says "plan YB-12", "revise YB-12", "work on YB-12", "build YB-12", "plan everything in Next Up", or "/yb plan 12" / "/yb revise 12" / "/yb work 12".
+description: Plan, revise, or build one Yapmeter backlog ticket (YB-n) from the Notion backlog. Use when Kaegan says "plan YB-12", "revise YB-12", "work on YB-12", "build YB-12", "plan everything in Next Up", or "/yb plan 12" / "/yb revise 12" / "/yb work 12". The ticket can be given as YB-n, a pasted Notion link, or its title.
 ---
 
 # YB-n: plan a ticket, or build one
@@ -13,6 +13,16 @@ and he reviews the PR. Nothing in Notion triggers anything; a session only does
 what he asked for in chat.
 
 ## Finding the ticket
+
+Kaegan can name a ticket three ways; all of them mean the same row.
+
+- **A Notion link** (`https://app.notion.com/p/...` or `notion.so/...`):
+  fetch it directly. Confirm the page's parent data source is the backlog;
+  if it is not, say so and stop.
+- **A number** (`YB-12`, `12`, `#12`): the `ID` property is an
+  auto-increment Notion shows as `YB-n` on the page and in the database.
+- **A title or a few words of it**: query `Name` with `LIKE` and, if more
+  than one row matches, list them and ask which.
 
 The backlog data source is `collection://d0115c29-c2f0-4b88-bf5e-a8df40131280`.
 `YB-12` is the row whose `userDefined:ID` is 12:
