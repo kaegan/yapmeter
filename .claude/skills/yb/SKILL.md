@@ -40,9 +40,13 @@ Read `CONSTITUTION.md` before planning or building anything.
 2. Read the ticket, its epic, and the code it touches. Do not build.
 3. Decide whether the ticket has enough detail to plan from. It does when
    the `## Problem` says what is wrong or missing for the user, the
-   `## Acceptance Criteria` can be checked, and there is at most one open
-   choice that would change the approach. If it does not, ask before
-   planning:
+   `## Acceptance Criteria` can be checked, it fits inside the
+   `CONSTITUTION.md` boundaries, and there is at most one open choice that
+   would change the approach. If it does not, ask before planning:
+   - A ticket that crosses a boundary is the first question, before any
+     detail question: does he want to narrow the ticket so it fits, amend
+     the constitution in the same PR, or mark it `Not doing`? Name the
+     boundary by number and quote the line it crosses.
    - Write a `## Questions` section at the end of the page body: one
      numbered question per line, each with the answer you would assume if
      he does not say. Three questions is the usual limit; a ticket needing
