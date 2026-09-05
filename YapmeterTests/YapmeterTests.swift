@@ -420,30 +420,21 @@ final class MeetingDetectionTests: XCTestCase {
     }
 }
 
-final class MenuBarStyleTests: XCTestCase {
-    /// The menu lists these top to bottom: the original lamp first, then the
-    /// pets, then the railway, matching the brand boards they came from.
-    func testGlyphsAreListedLampPetsThenRailway() {
-        XCTAssertEqual(GlyphStyle.allCases, [
-            .lamp, .petClassic, .petMouth, .petHollowSolid, .petPair,
-            .semaphoreArm, .wideHead, .crossingBarrier,
-        ])
+final class PetPaletteTests: XCTestCase {
+    /// The dark aspect is the label colour: an asleep pet should match the
+    /// menu bar's other icons, not be a fifth colour.
+    func testDarkAspectIsTheLabelColour() {
+        XCTAssertEqual(PetPalette.color(for: .dark), .labelColor)
     }
 
-    func testEveryGlyphAndPaletteHasAName() {
-        for glyph in GlyphStyle.allCases {
-            XCTAssertFalse(glyph.displayName.isEmpty, "\(glyph)")
-        }
-        for palette in LampPalette.allCases {
-            XCTAssertFalse(palette.displayName.isEmpty, "\(palette)")
-        }
-    }
-
-    /// Every palette keeps the dark aspect as the label colour: an idle glyph
-    /// should match the menu bar's other icons, not be a fifth colour.
-    func testDarkAspectIsNeverAPaletteColour() {
-        for palette in LampPalette.allCases {
-            XCTAssertEqual(palette.color(for: .dark), .labelColor, "\(palette)")
+    /// The two yellows are one colour; every other live aspect has its own.
+    func testLiveAspectsAreColouredDistinctly() {
+        XCTAssertEqual(PetPalette.color(for: .caution), PetPalette.color(for: .preliminary))
+        let distinct = [Aspect.occupied, .caution, .clear, .speaking].map { PetPalette.color(for: $0) }
+        for (index, colour) in distinct.enumerated() {
+            for other in distinct[(index + 1)...] {
+                XCTAssertNotEqual(colour, other)
+            }
         }
     }
 }
@@ -509,26 +500,14 @@ final class SignalHeadRendererTests: XCTestCase {
         XCTAssertEqual(SignalHeadRenderer.timeLabel(600), "10:00")
     }
 
-    /// Every glyph, in every palette and aspect, draws something into the
-    /// image. This runs the drawing code for real rather than trusting the
-    /// handler to do it later.
-    func testEveryGlyphDrawsInEveryAspectAndPalette() {
-        for glyph in GlyphStyle.allCases {
-            for palette in LampPalette.allCases {
-                for aspect in Aspect.allCases {
-                    let image = SignalHeadRenderer.menuBarImage(
-                        for: aspect, speakingSeconds: nil, glyph: glyph, palette: palette
-                    )
-                    let label = "\(glyph) \(palette) \(aspect)"
-                    // The idle Lamp is a system symbol at its own size; every
-                    // other combination is drawn into the standard slot.
-                    if !(glyph == .lamp && aspect == .dark) {
-                        XCTAssertEqual(image.size.height, SignalHeadRenderer.imageHeight, label)
-                        XCTAssertEqual(image.size.width, SignalHeadRenderer.width(of: glyph) + 4, label)
-                    }
-                    XCTAssertTrue(paintsAnything(image), "\(label) drew nothing")
-                }
-            }
+    /// Every aspect draws something into the image. This runs the drawing
+    /// code for real rather than trusting the handler to do it later.
+    func testEveryAspectDraws() {
+        for aspect in Aspect.allCases {
+            let image = SignalHeadRenderer.menuBarImage(for: aspect, speakingSeconds: nil)
+            XCTAssertEqual(image.size.height, SignalHeadRenderer.imageHeight, "\(aspect)")
+            XCTAssertEqual(image.size.width, SignalHeadRenderer.glyphWidth + 4, "\(aspect)")
+            XCTAssertTrue(paintsAnything(image), "\(aspect) drew nothing")
         }
     }
 
@@ -542,47 +521,43 @@ final class SignalHeadRendererTests: XCTestCase {
     }
 
     func testTimerWidensTheImageAndStillDraws() {
-        for glyph in GlyphStyle.allCases {
-            let silent = SignalHeadRenderer.menuBarImage(for: .speaking, speakingSeconds: nil, glyph: glyph)
-            let talking = SignalHeadRenderer.menuBarImage(for: .speaking, speakingSeconds: 42, glyph: glyph)
-            let tiring = SignalHeadRenderer.menuBarImage(
-                for: .speaking, speakingSeconds: SignalHeadRenderer.tiringSeconds + 10, glyph: glyph
-            )
-            let longTurn = SignalHeadRenderer.menuBarImage(
-                for: .speaking, speakingSeconds: SignalHeadRenderer.longTurnSeconds + 32, glyph: glyph
-            )
-            XCTAssertGreaterThan(talking.size.width, silent.size.width, "\(glyph)")
-            XCTAssertTrue(paintsAnything(talking), "\(glyph) at 0:42 drew nothing")
-            XCTAssertTrue(paintsAnything(tiring), "\(glyph) at two minutes drew nothing")
-            XCTAssertTrue(paintsAnything(longTurn), "\(glyph) on a long turn drew nothing")
-        }
+        let silent = SignalHeadRenderer.menuBarImage(for: .speaking, speakingSeconds: nil)
+        let talking = SignalHeadRenderer.menuBarImage(for: .speaking, speakingSeconds: 42)
+        let tiring = SignalHeadRenderer.menuBarImage(
+            for: .speaking, speakingSeconds: SignalHeadRenderer.tiringSeconds + 10
+        )
+        let longTurn = SignalHeadRenderer.menuBarImage(
+            for: .speaking, speakingSeconds: SignalHeadRenderer.longTurnSeconds + 32
+        )
+        XCTAssertGreaterThan(talking.size.width, silent.size.width)
+        XCTAssertTrue(paintsAnything(talking), "0:42 drew nothing")
+        XCTAssertTrue(paintsAnything(tiring), "two minutes drew nothing")
+        XCTAssertTrue(paintsAnything(longTurn), "a long turn drew nothing")
     }
 
-    /// The bubble pets keep the tail on the left while the floor is theirs
-    /// and swing it to the right once it's yours, like chat bubbles do. Only
+    /// The pet keeps his tail on the left while the floor is theirs and
+    /// swings it to the right once it's yours, like chat bubbles do. Only
     /// the tail reaches the bottom rows of the image, so where the paint
     /// sits in those rows says which side it's on.
-    func testBubblePetsTurnTheirTailToWhoeverHasTheFloor() {
-        for glyph in [GlyphStyle.petClassic, .petMouth, .petHollowSolid] {
-            for aspect in [Aspect.dark, .occupied, .caution, .preliminary] {
-                let image = SignalHeadRenderer.menuBarImage(for: aspect, speakingSeconds: nil, glyph: glyph)
-                XCTAssertLessThan(tailSide(of: image), 0.5, "\(glyph) \(aspect): tail should be on the left")
-            }
-            let clear = SignalHeadRenderer.menuBarImage(for: .clear, speakingSeconds: nil, glyph: glyph)
-            XCTAssertGreaterThan(tailSide(of: clear), 0.5, "\(glyph) clear: tail should be on the right")
-            let speaking = SignalHeadRenderer.menuBarImage(for: .speaking, speakingSeconds: 42, glyph: glyph)
-            XCTAssertGreaterThan(tailSide(of: speaking), 0.5, "\(glyph) speaking: tail should be on the right")
+    func testPetTurnsHisTailToWhoeverHasTheFloor() {
+        for aspect in [Aspect.dark, .occupied, .caution, .preliminary] {
+            let image = SignalHeadRenderer.menuBarImage(for: aspect, speakingSeconds: nil)
+            XCTAssertLessThan(tailSide(of: image), 0.5, "\(aspect): tail should be on the left")
         }
+        let clear = SignalHeadRenderer.menuBarImage(for: .clear, speakingSeconds: nil)
+        XCTAssertGreaterThan(tailSide(of: clear), 0.5, "clear: tail should be on the right")
+        let speaking = SignalHeadRenderer.menuBarImage(for: .speaking, speakingSeconds: 42)
+        XCTAssertGreaterThan(tailSide(of: speaking), 0.5, "speaking: tail should be on the right")
     }
 
-    /// Where the paint in the image's bottom two rows sits, as a fraction of
-    /// the glyph's width: 0 is the far left, 1 the far right.
+    /// Where the paint in the image's bottom rows sits, as a fraction of the
+    /// pet's width: 0 is the far left, 1 the far right.
     private func tailSide(of image: NSImage) -> CGFloat {
         let (rep, width, _) = render(image)
         guard let data = rep.bitmapData else { return 0.5 }
-        // Bottom rows of a bitmap are the highest y; the glyph box is the
+        // Bottom rows of a bitmap are the highest y; the pet's box is the
         // first 20pt of a wider image, so only look under it.
-        let glyphWidth = min(width, Int(SignalHeadRenderer.width(of: .petClassic) + 4) * 2)
+        let glyphWidth = min(width, Int(SignalHeadRenderer.glyphWidth + 4) * 2)
         var weighted: CGFloat = 0, total: CGFloat = 0
         for y in 2..<6 {
             let row = data + (Int(rep.pixelsHigh) - 1 - y) * rep.bytesPerRow

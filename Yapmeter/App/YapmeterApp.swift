@@ -3,19 +3,16 @@ import SwiftUI
 @main
 struct YapmeterApp: App {
     @State private var engine = SignalEngine()
-    @State private var style = MenuBarStyle()
     @State private var preview = AspectPreview()
     @State private var updater = Updater()
 
     var body: some Scene {
         MenuBarExtra {
-            YapmeterMenu(engine: engine, style: style, preview: preview, updater: updater)
+            YapmeterMenu(engine: engine, preview: preview, updater: updater)
         } label: {
             Image(nsImage: SignalHeadRenderer.menuBarImage(
                 for: preview.isRunning ? preview.aspect : engine.aspect,
-                speakingSeconds: preview.isRunning ? preview.speakingSeconds : engine.speakingSeconds,
-                glyph: style.glyph,
-                palette: style.palette
+                speakingSeconds: preview.isRunning ? preview.speakingSeconds : engine.speakingSeconds
             ))
             .onAppear { engine.start() }
             // A real meeting outranks the preview: the lamp must never show
