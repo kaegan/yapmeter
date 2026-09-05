@@ -92,6 +92,63 @@ Two prompts, both on the first meeting the app sees:
 - **Microphone** to hear you. Refusing this leaves the signal working and
   disables the turn timer.
 
+## Updates
+
+Shipped builds update themselves through [Sparkle](https://sparkle-project.org).
+The app checks `https://yapmeter.com/appcast.xml` once a day and on demand from
+**Check for Updates…** in the menu; the feed serves whatever the newest GitHub
+release published. Every archive is signed with an EdDSA key that never leaves
+the release machine, and Sparkle refuses anything the key in `Info.plist`
+doesn't verify.
+
+This is the one thing the app sends off the Mac, and it sends only what an
+HTTPS request carries: the current version, in the User-Agent. No audio, no
+meeting data. Turning the automatic check off in Sparkle's dialog leaves the
+manual one working.
+
+## Releasing
+
+One-time setup, in this order:
+
+1. **Signing key.** Run Sparkle's `generate_keys` once. It puts the private key
+   in your login keychain and prints the public one; paste that into
+   `SUPublicEDKey` in `Yapmeter/Info.plist`, replacing the placeholder. The
+   release workflow refuses to build while the placeholder is still there,
+   because an update signed against a key nobody holds is an app that can never
+   be updated again. Export the private key with `generate_keys -x` for the CI
+   secret, and keep a copy somewhere you'd still have it after a disk failure —
+   losing it means every existing install is stranded on its current version.
+
+   ```bash
+   ./build/DerivedData/SourcePackages/artifacts/sparkle/Sparkle/bin/generate_keys
+   ```
+
+2. **Repository secrets.** `CERTIFICATE_P12_BASE64` (a Developer ID Application
+   certificate exported as .p12, then `base64 -i cert.p12`),
+   `CERTIFICATE_P12_PASSWORD`, `APPLE_TEAM_ID`, `APPLE_ID`,
+   `APPLE_APP_SPECIFIC_PASSWORD` (from appleid.apple.com, not your account
+   password), and `SPARKLE_PRIVATE_KEY`.
+
+3. **The feed.** `yapmeter.com/appcast.xml` rewrites to the appcast attached to
+   the newest GitHub release, so the URL baked into every shipped binary is one
+   we own. That URL can never change: an old build only ever asks the address
+   it was compiled with. The download button on the site wants
+   `https://github.com/kaegan/yapmeter/releases/latest/download/Yapmeter.zip`,
+   which is why the archive is named without its version.
+
+Then each release is a tag:
+
+```bash
+git tag v0.2.0 && git push origin v0.2.0
+```
+
+The workflow tests, archives, signs, notarizes, staples, checks the result
+against Gatekeeper, signs the archive for Sparkle, and rewrites the appcast
+from the live feed plus the new item. The marketing version comes from the tag
+and the build number from `git rev-list --count HEAD`, so `CFBundleVersion`
+always increases — Sparkle compares that number and nothing else, and one
+release that repeats it leaves those users unable to update.
+
 ## Status
 
 Milestone 3: automatic meeting detection, voice activity detection on both

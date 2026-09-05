@@ -1,0 +1,224 @@
+name: Release
+
+# Push a tag to ship: `git tag v0.2.0 && git push origin v0.2.0`.
+# The tag is the only place the marketing version is written down — the build
+# number comes from the commit count, so it always increases and Sparkle can
+# always tell an update from a downgrade.
+on:
+  push:
+    tags:
+      - "v*"
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: macos-15
+    timeout-minutes: 45
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          # rev-list --count needs the whole history, not the default shallow
+          # clone, or every release would claim to be build 1.
+          fetch-depth: 0
+
+      - name: Work out the version numbers
+        id: version
+        run: |
+          VERSION="${GITHUB_REF_NAME#v}"
+          BUILD="$(git rev-list --count HEAD)"
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+          echo "build=$BUILD" >> "$GITHUB_OUTPUT"
+          echo "Releasing $VERSION (build $BUILD)"
+
+      - name: Refuse to ship the placeholder signing key
+        run: |
+          # An update signed against a key nobody holds is an app that can
+          # never be updated again. Fail here rather than at the user's Mac.
+          if grep -q REPLACE_WITH_SPARKLE_PUBLIC_ED_KEY Yapmeter/Info.plist; then
+            echo "::error::SUPublicEDKey is still the placeholder. Run generate_keys and put the public key in Yapmeter/Info.plist."
+            exit 1
+          fi
+
+      - name: Install XcodeGen
+        run: brew install xcodegen
+
+      - name: Import the Developer ID certificate
+        env:
+          CERTIFICATE_P12_BASE64: ${{ secrets.CERTIFICATE_P12_BASE64 }}
+          CERTIFICATE_P12_PASSWORD: ${{ secrets.CERTIFICATE_P12_PASSWORD }}
+        run: |
+          KEYCHAIN="$RUNNER_TEMP/build.keychain-db"
+          # The keychain is thrown away with the runner, so its password only
+          # has to be unguessable for the length of this job.
+          KEYCHAIN_PASSWORD="$(uuidgen)"
+          echo "$CERTIFICATE_P12_BASE64" | base64 --decode > "$RUNNER_TEMP/certificate.p12"
+          # A pipeline like `base64 -i missing.p12 | gh secret set ...` stores
+          # an empty secret and still prints a tick, so an empty or absurdly
+          # small certificate is the likeliest thing to be wrong here.
+          if [ ! -s "$RUNNER_TEMP/certificate.p12" ] || [ "$(stat -f%z "$RUNNER_TEMP/certificate.p12")" -lt 1000 ]; then
+            echo "::error::CERTIFICATE_P12_BASE64 decoded to nothing usable. Re-set it from a .p12 your shell can actually read."
+            exit 1
+          fi
+          security create-keychain -p "$KEYCHAIN_PASSWORD" "$KEYCHAIN"
+          security set-keychain-settings -lut 21600 "$KEYCHAIN"
+          security unlock-keychain -p "$KEYCHAIN_PASSWORD" "$KEYCHAIN"
+          security import "$RUNNER_TEMP/certificate.p12" -k "$KEYCHAIN" \
+            -P "$CERTIFICATE_P12_PASSWORD" -T /usr/bin/codesign
+          security set-key-partition-list -S apple-tool:,apple:,codesign: \
+            -s -k "$KEYCHAIN_PASSWORD" "$KEYCHAIN" > /dev/null
+          security list-keychain -d user -s "$KEYCHAIN" login.keychain-db
+          rm "$RUNNER_TEMP/certificate.p12"
+
+      - name: Generate the Xcode project
+        run: xcodegen generate
+
+      - name: Test
+        run: |
+          xcodebuild test \
+            -project Yapmeter.xcodeproj \
+            -scheme Yapmeter \
+            -configuration Debug \
+            -derivedDataPath build/DerivedData \
+            CODE_SIGNING_ALLOWED=NO
+
+      - name: Archive
+        env:
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+        run: |
+          xcodebuild archive \
+            -project Yapmeter.xcodeproj \
+            -scheme Yapmeter \
+            -configuration Release \
+            -derivedDataPath build/DerivedData \
+            -archivePath "$RUNNER_TEMP/Yapmeter.xcarchive" \
+            MARKETING_VERSION="${{ steps.version.outputs.version }}" \
+            CURRENT_PROJECT_VERSION="${{ steps.version.outputs.build }}" \
+            CODE_SIGN_STYLE=Manual \
+            CODE_SIGN_IDENTITY="Developer ID Application" \
+            DEVELOPMENT_TEAM="$APPLE_TEAM_ID" \
+            OTHER_CODE_SIGN_FLAGS="--timestamp"
+
+      - name: Export the app
+        env:
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+        run: |
+          # Export rather than reaching into the archive by hand: Sparkle
+          # nests a framework, an XPC service and two helper apps inside the
+          # bundle, and each has to be signed inside-out or notarization
+          # rejects the lot.
+          cat > "$RUNNER_TEMP/ExportOptions.plist" <<PLIST
+          <?xml version="1.0" encoding="UTF-8"?>
+          <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+          <plist version="1.0">
+          <dict>
+            <key>method</key>
+            <string>developer-id</string>
+            <key>teamID</key>
+            <string>$APPLE_TEAM_ID</string>
+            <key>signingStyle</key>
+            <string>manual</string>
+            <key>signingCertificate</key>
+            <string>Developer ID Application</string>
+          </dict>
+          </plist>
+          PLIST
+          xcodebuild -exportArchive \
+            -archivePath "$RUNNER_TEMP/Yapmeter.xcarchive" \
+            -exportPath "$RUNNER_TEMP/export" \
+            -exportOptionsPlist "$RUNNER_TEMP/ExportOptions.plist"
+
+      - name: Notarize and staple
+        env:
+          APPLE_ID: ${{ secrets.APPLE_ID }}
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+          APPLE_APP_SPECIFIC_PASSWORD: ${{ secrets.APPLE_APP_SPECIFIC_PASSWORD }}
+        run: |
+          APP="$RUNNER_TEMP/export/Yapmeter.app"
+          # Notarization takes a zip; the staple goes back onto the .app, so
+          # this archive is a throwaway and the distributed one is zipped
+          # again afterwards.
+          ditto -c -k --keepParent "$APP" "$RUNNER_TEMP/notarize.zip"
+          xcrun notarytool submit "$RUNNER_TEMP/notarize.zip" \
+            --apple-id "$APPLE_ID" \
+            --team-id "$APPLE_TEAM_ID" \
+            --password "$APPLE_APP_SPECIFIC_PASSWORD" \
+            --wait
+          xcrun stapler staple "$APP"
+          # Proves the result is what a user's Mac will see: stapled, signed
+          # by a Developer ID, and accepted by Gatekeeper offline.
+          spctl --assess --type execute --verbose "$APP"
+
+      - name: Zip for distribution
+        id: package
+        run: |
+          # Named without the version on purpose. The tag already makes the
+          # download URL unique per release, and a fixed name is what lets
+          # yapmeter.com link at /releases/latest/download/Yapmeter.zip and
+          # never touch the link again.
+          ZIP="$RUNNER_TEMP/Yapmeter.zip"
+          ditto -c -k --keepParent "$RUNNER_TEMP/export/Yapmeter.app" "$ZIP"
+          echo "zip=$ZIP" >> "$GITHUB_OUTPUT"
+          echo "length=$(stat -f%z "$ZIP")" >> "$GITHUB_OUTPUT"
+
+      - name: Sign the archive for Sparkle
+        id: sign
+        env:
+          SPARKLE_PRIVATE_KEY: ${{ secrets.SPARKLE_PRIVATE_KEY }}
+        run: |
+          SIGN_UPDATE="$(find build/DerivedData/SourcePackages/artifacts -name sign_update -not -path '*old_dsa*' | head -1)"
+          # --ed-key-file - reads the key from stdin. Sparkle removed the
+          # option that took it as an argument, and stdin is the better shape
+          # anyway: the key never lands on the runner's disk or in its argv.
+          SIGNATURE="$(echo "$SPARKLE_PRIVATE_KEY" | "$SIGN_UPDATE" --ed-key-file - -p "${{ steps.package.outputs.zip }}")"
+          if [ -z "$SIGNATURE" ]; then
+            echo "::error::sign_update produced no signature."
+            exit 1
+          fi
+          # The signature is not a secret — it is published in the appcast —
+          # but the key it came from must never reach the log.
+          echo "signature=$SIGNATURE" >> "$GITHUB_OUTPUT"
+
+      - name: Create the release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          # Create it now, before the appcast is built, because the appcast
+          # embeds the release notes and they live on the release. A release
+          # made by hand ahead of the tag keeps its own notes.
+          gh release view "$GITHUB_REF_NAME" >/dev/null 2>&1 || \
+            gh release create "$GITHUB_REF_NAME" \
+              --title "${{ steps.version.outputs.version }}" \
+              --generate-notes
+
+      - name: Update the appcast
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          VERSION="${{ steps.version.outputs.version }}"
+          # The live feed is the source of truth for what has already shipped,
+          # so past releases survive without anything being committed back to
+          # the repo. A first release, or an unreachable feed, starts fresh.
+          curl -fsSL https://yapmeter.com/appcast.xml -o "$RUNNER_TEMP/appcast.xml" || : > "$RUNNER_TEMP/appcast.xml"
+          gh release view "$GITHUB_REF_NAME" --json body -q .body > "$RUNNER_TEMP/notes.md"
+          python3 scripts/appcast.py \
+            --appcast "$RUNNER_TEMP/appcast.xml" \
+            --version "$VERSION" \
+            --build "${{ steps.version.outputs.build }}" \
+            --url "https://github.com/${{ github.repository }}/releases/download/$GITHUB_REF_NAME/Yapmeter.zip" \
+            --length "${{ steps.package.outputs.length }}" \
+            --signature "${{ steps.sign.outputs.signature }}" \
+            --notes-file "$RUNNER_TEMP/notes.md"
+
+      - name: Upload the app and the appcast
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          # Both land on the same release: the zip is what the appcast points
+          # at, and the appcast is what yapmeter.com serves as the feed.
+          gh release upload "$GITHUB_REF_NAME" \
+            "${{ steps.package.outputs.zip }}" \
+            "$RUNNER_TEMP/appcast.xml" \
+            --clobber
