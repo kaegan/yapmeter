@@ -85,9 +85,39 @@ Read `CONSTITUTION.md` before planning or building anything.
    "work on YB-n" or by moving the ticket to `Next Up`, or he leaves
    inline comments and says "revise YB-n".
 
-Bug tickets (`Type` = `Bug`): the plan is a diagnosis plus the fix. If the
-bug can only be reproduced in a real meeting, say so in **Open questions**
-rather than guessing.
+### Bug tickets
+
+For `Type` = `Bug`, reproduce and diagnose before writing any plan. A plan
+for a bug that has not been reproduced is a guess, and the ticket should
+say so rather than carry one.
+
+1. Ask the questions gate's questions first if the report lacks what a
+   reproduction needs: which meeting app, what was on screen, what was
+   expected, roughly when, and whether it recurs.
+2. Try to reproduce, in this order, and stop at the first that works:
+   - **A failing test.** The detector and state machine are pure and
+     time-injected, so most signal bugs can be replayed in
+     `YapmeterTests/` with a scripted sequence of levels and clock
+     ticks. Write the test on a scratch branch; it becomes the regression
+     test in the fix PR.
+   - **The app itself.** `./scripts/build.sh` installs and launches it.
+     The Developer submenu's **Preview states** walks the pet through
+     every state for drawing or menu bar bugs; **Listen to All Audio**
+     with a video playing exercises the audio path without a call.
+   - **Reading the code.** If neither reproduces it, trace the reported
+     behaviour to a specific path and say plainly that this is a
+     diagnosis from reading, not a reproduction.
+3. Write the findings into the page body under `## Diagnosis` before the
+   plan: how it was reproduced (test name or steps), the cause with
+   file and line, and what you ruled out. If it could not be reproduced,
+   say what was tried and ask Kaegan for more detail through the
+   questions gate instead of planning.
+4. Only then write `## Plan`. For a bug it is short: the fix, the
+   regression test, and anything nearby that the diagnosis showed is
+   also wrong but out of scope.
+
+Under `work on YB-n`, the reproduction test from the diagnosis goes into
+the PR first, red, and the fix turns it green.
 
 `plan everything in Next Up` (or `plan Next Up`): query `Status` = `Next Up`,
 skip rows whose body already has a `## Plan`, run the steps above for each,
