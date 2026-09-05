@@ -1,0 +1,53 @@
+name: CI
+
+# Every pull request builds and runs the tests on a Mac, so a change is
+# verified before anyone reads it. Pushes to main run the same job so the
+# branch always has a known-good build to release from.
+on:
+  pull_request:
+  push:
+    branches:
+      - main
+
+jobs:
+  test:
+    runs-on: macos-15
+    timeout-minutes: 30
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install XcodeGen
+        run: brew install xcodegen
+
+      - name: Generate the Xcode project
+        run: xcodegen generate
+
+      - name: Test
+        run: |
+          xcodebuild test \
+            -project Yapmeter.xcodeproj \
+            -scheme Yapmeter \
+            -configuration Debug \
+            -derivedDataPath build/DerivedData \
+            CODE_SIGNING_ALLOWED=NO
+
+  ticket-link:
+    # The Notion backlog links a PR to its ticket through a magic-word line
+    # in the description ("close YB-12" or "ref YB-12"). Nothing else links
+    # them, so a PR without one silently leaves the ticket behind.
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    timeout-minutes: 2
+
+    steps:
+      - name: Check the description names a backlog ticket
+        env:
+          BODY: ${{ github.event.pull_request.body }}
+        run: |
+          if printf '%s' "$BODY" | grep -Eiq '\b(close[sd]?|fix(e[sd])?|resolve[sd]?|ref[s]?)[[:space:]]+YB-[0-9]+\b'; then
+            echo "Ticket link found."
+          else
+            echo "::error::Add a line like 'close YB-12' or 'ref YB-12' to the PR description so Notion links it to the backlog ticket."
+            exit 1
+          fi
