@@ -33,7 +33,7 @@
 	<key>SUFeedURL</key>
 	<string>https://yapmeter.com/appcast.xml</string>
 	<key>SUPublicEDKey</key>
-	<string>l68kmfUMZzp4pfrvkG+MB2lQZ5RnKDqgTo53jHKY+7Y=</string>
+	<string>FdAOu+8JtJq5q3zlSsPgR3y4dMAETjB7pQNMZE0HpWA=</string>
 	<key>SUEnableAutomaticChecks</key>
 	<true/>
 	<key>SUScheduledCheckInterval</key>
