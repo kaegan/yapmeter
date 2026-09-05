@@ -7,6 +7,8 @@ import SwiftUI
 /// already say.
 struct YapmeterMenu: View {
     @Bindable var engine: SignalEngine
+    @Bindable var style: MenuBarStyle
+    @Bindable var preview: AspectPreview
 
     var body: some View {
         Text(statusText)
@@ -41,6 +43,24 @@ struct YapmeterMenu: View {
         }
         Divider()
         Toggle("Launch at Login", isOn: launchAtLogin)
+        // The brand trial lives behind one Developer item: eight glyphs,
+        // three palettes and the state preview would otherwise be most of
+        // the menu, and none of it is a setting anyone changes twice a day.
+        Menu("Developer") {
+            Menu("Glyph") {
+                ForEach(GlyphStyle.allCases, id: \.self) { glyph in
+                    Toggle(glyph.displayName, isOn: selection(for: glyph))
+                }
+            }
+            Menu("Colours") {
+                ForEach(LampPalette.allCases, id: \.self) { palette in
+                    Toggle(palette.displayName, isOn: selection(for: palette))
+                }
+            }
+            // Cycles the lamp through every state so a glyph can be judged
+            // without a meeting. Turns itself off when a real one starts.
+            Toggle("Preview states", isOn: $preview.isOn)
+        }
         Divider()
         // An LSUIElement app has no app menu, so this is the only ⌘Q there is.
         Button("Quit Yapmeter") { NSApp.terminate(nil) }
@@ -88,6 +108,20 @@ struct YapmeterMenu: View {
         Binding(
             get: { engine.sensitivity == level },
             set: { isOn in if isOn { engine.sensitivity = level } }
+        )
+    }
+
+    private func selection(for glyph: GlyphStyle) -> Binding<Bool> {
+        Binding(
+            get: { style.glyph == glyph },
+            set: { isOn in if isOn { style.glyph = glyph } }
+        )
+    }
+
+    private func selection(for palette: LampPalette) -> Binding<Bool> {
+        Binding(
+            get: { style.palette == palette },
+            set: { isOn in if isOn { style.palette = palette } }
         )
     }
 
