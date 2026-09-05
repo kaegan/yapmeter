@@ -26,22 +26,24 @@ struct SemaphoreMenu: View {
             Toggle(level.displayName, isOn: selection(for: level))
         }
         Divider()
-        // Submenus, not more headers: eight glyphs and three palettes would
-        // otherwise be most of the menu, and they're a trial, not a setting
-        // anyone changes twice a day.
-        Menu("Glyph") {
-            ForEach(GlyphStyle.allCases, id: \.self) { glyph in
-                Toggle(glyph.displayName, isOn: selection(for: glyph))
+        // The brand trial lives behind one Developer item: eight glyphs,
+        // three palettes and the state preview would otherwise be most of
+        // the menu, and none of it is a setting anyone changes twice a day.
+        Menu("Developer") {
+            Menu("Glyph") {
+                ForEach(GlyphStyle.allCases, id: \.self) { glyph in
+                    Toggle(glyph.displayName, isOn: selection(for: glyph))
+                }
             }
-        }
-        Menu("Colours") {
-            ForEach(LampPalette.allCases, id: \.self) { palette in
-                Toggle(palette.displayName, isOn: selection(for: palette))
+            Menu("Colours") {
+                ForEach(LampPalette.allCases, id: \.self) { palette in
+                    Toggle(palette.displayName, isOn: selection(for: palette))
+                }
             }
+            // Cycles the lamp through every state so a glyph can be judged
+            // without a meeting. Turns itself off when a real one starts.
+            Toggle("Preview states", isOn: $preview.isOn)
         }
-        // Cycles the lamp through every state so a glyph can be judged
-        // without a meeting. Turns itself off when a real one starts.
-        Toggle("Preview states", isOn: $preview.isOn)
         Divider()
         // An LSUIElement app has no app menu, so this is the only ⌘Q there is.
         Button("Quit Semaphore") { NSApp.terminate(nil) }
