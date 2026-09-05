@@ -55,6 +55,13 @@ jobs:
           # has to be unguessable for the length of this job.
           KEYCHAIN_PASSWORD="$(uuidgen)"
           echo "$CERTIFICATE_P12_BASE64" | base64 --decode > "$RUNNER_TEMP/certificate.p12"
+          # A pipeline like `base64 -i missing.p12 | gh secret set ...` stores
+          # an empty secret and still prints a tick, so an empty or absurdly
+          # small certificate is the likeliest thing to be wrong here.
+          if [ ! -s "$RUNNER_TEMP/certificate.p12" ] || [ "$(stat -f%z "$RUNNER_TEMP/certificate.p12")" -lt 1000 ]; then
+            echo "::error::CERTIFICATE_P12_BASE64 decoded to nothing usable. Re-set it from a .p12 your shell can actually read."
+            exit 1
+          fi
           security create-keychain -p "$KEYCHAIN_PASSWORD" "$KEYCHAIN"
           security set-keychain-settings -lut 21600 "$KEYCHAIN"
           security unlock-keychain -p "$KEYCHAIN_PASSWORD" "$KEYCHAIN"
