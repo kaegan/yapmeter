@@ -144,6 +144,12 @@ final class ProcessTapSource: @unchecked Sendable {
     /// Runs on the real-time IO thread: compute RMS across every channel and
     /// frame in the buffer list and publish it as dBFS. No allocation, no
     /// locks beyond the one inside `LevelMeter.update`.
+    ///
+    /// Unlike `MicrophoneSource`, this doesn't slice the buffer through
+    /// `LevelAnalysis.sustainedDBFS` first: the aggregate device delivers
+    /// buffers around 10ms long, too short to slice into anything meaningful,
+    /// and this end has no keyboard-click problem to begin with - it only
+    /// ever hears what the meeting app plays.
     private static func processBuffer(_ bufferList: UnsafePointer<AudioBufferList>, into meter: LevelMeter) {
         let buffers = UnsafeMutableAudioBufferListPointer(UnsafeMutablePointer(mutating: bufferList))
         var sumSquares: Double = 0
@@ -163,7 +169,6 @@ final class ProcessTapSource: @unchecked Sendable {
 
         guard sampleCount > 0 else { return }
         let rms = (sumSquares / Double(sampleCount)).squareRoot()
-        let dBFS = 20 * log10(max(rms, 1e-9))
-        meter.update(dBFS: Float(dBFS))
+        meter.update(dBFS: LevelAnalysis.dBFS(rms: rms))
     }
 }

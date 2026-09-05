@@ -55,8 +55,12 @@ final class MicrophoneSource: @unchecked Sendable {
         }
 
         let meter = levelMeter
+        // 10ms worth of frames at the input's real sample rate: the slice
+        // size `LevelAnalysis.sustainedDBFS` uses to tell a keystroke click
+        // apart from sustained speech. See `processBuffer` below.
+        let sliceLength = max(1, Int(format.sampleRate / 100))
         input.installTap(onBus: 0, bufferSize: 1024, format: format) { buffer, _ in
-            MicrophoneSource.processBuffer(buffer, into: meter)
+            MicrophoneSource.processBuffer(buffer, sliceLength: sliceLength, into: meter)
         }
         engine.prepare()
         do {
@@ -83,24 +87,32 @@ final class MicrophoneSource: @unchecked Sendable {
         }
     }
 
-    /// Runs on the engine's render thread: RMS across every channel and frame,
-    /// published as dBFS. Mirrors `ProcessTapSource.processBuffer`.
-    private static func processBuffer(_ buffer: AVAudioPCMBuffer, into meter: LevelMeter) {
+    /// Runs on the engine's render thread: a sustained (not just loud) level
+    /// across every channel, published as dBFS.
+    ///
+    /// Unlike `ProcessTapSource.processBuffer`, this slices each buffer before
+    /// measuring it (`LevelAnalysis.sustainedDBFS`). The mic sits right next
+    /// to your keyboard, so a click needs to be told apart from your voice at
+    /// this stage; the tap only hears whatever the meeting app plays, which
+    /// doesn't have that problem and arrives in buffers too short to slice
+    /// anyway.
+    private static func processBuffer(_ buffer: AVAudioPCMBuffer, sliceLength: Int, into meter: LevelMeter) {
         guard let channels = buffer.floatChannelData else { return }
         let frameCount = Int(buffer.frameLength)
         let channelCount = Int(buffer.format.channelCount)
         guard frameCount > 0, channelCount > 0 else { return }
 
-        var sumSquares: Double = 0
+        // Per channel, then the max across channels - a voice on either one
+        // counts - rather than blending every channel into one RMS the way
+        // this used to. Built-in and USB mics are practically always mono, so
+        // this rarely changes anything, but a genuinely stereo input with
+        // uncorrelated per-channel noise now reads at whichever channel is
+        // louder rather than their combined average.
+        var loudest = LevelMeter.silence
         for channel in 0..<channelCount {
-            let samples = channels[channel]
-            for frame in 0..<frameCount {
-                let sample = Double(samples[frame])
-                sumSquares += sample * sample
-            }
+            let samples = UnsafeBufferPointer(start: channels[channel], count: frameCount)
+            loudest = max(loudest, LevelAnalysis.sustainedDBFS(samples, sliceLength: sliceLength))
         }
-
-        let rms = (sumSquares / Double(frameCount * channelCount)).squareRoot()
-        meter.update(dBFS: Float(20 * log10(max(rms, 1e-9))))
+        meter.update(dBFS: loudest)
     }
 }

@@ -14,8 +14,12 @@ import Foundation
 ///   parts of the signal and absorbs steady broadband noise (fans, aircon).
 ///   It is frozen while we believe speech is present, so a long turn can't
 ///   drag the floor up into its own level and mute itself;
-/// - speech must hold above `onsetMargin` for `minimumOnset` before it counts,
-///   which rejects impulsive noise (a keyboard, a door, a mug on a desk);
+/// - loudness above `onsetMargin` has to accumulate for `onsetEvidence`
+///   seconds before it counts as speech, which rejects transients (a cough,
+///   a door, a mug on a desk) regardless of how loud they are. The evidence
+///   leaks away during quiet stretches rather than resetting outright, so
+///   speech with brief gaps (between words, between syllables) still
+///   accumulates toward the threshold instead of starting over each time;
 /// - once speaking, it takes the lower `releaseMargin` plus a `hangover` of
 ///   quiet to drop out, so the decision doesn't flicker between words.
 ///
@@ -56,8 +60,18 @@ struct VoiceActivityDetector {
     /// dB above the noise floor required to keep calling it speech. Lower than
     /// `onsetMargin`: this hysteresis is what stops the decision chattering.
     var releaseMargin: Float
-    /// How long the level must hold above `onsetMargin` before we believe it.
-    var minimumOnset: TimeInterval
+    /// How many seconds of accumulated loudness confirm speech. Fixed rather
+    /// than tied to `Sensitivity`: sensitivity is a level margin for the room,
+    /// this is a statement about what a sustained voice looks like in time,
+    /// which doesn't change with the room.
+    var onsetEvidence: TimeInterval
+    /// The accumulator never carries more evidence than this. Keeping it
+    /// modest (rather than, say, minutes of headroom) means a burst of
+    /// transients can't "pre-charge" an instant confirmation later; keeping
+    /// it above `onsetEvidence` means a resumption shortly after release
+    /// still has some residual credit and confirms a little faster than a
+    /// cold start.
+    var evidenceCap: TimeInterval
     /// How long we keep saying "speaking" after the level falls away.
     var hangover: TimeInterval
     /// Nothing below this is ever speech, however far above the noise floor it
@@ -67,8 +81,33 @@ struct VoiceActivityDetector {
 
     private(set) var isSpeaking = false
     private(set) var noiseFloor: Float
+    /// When the detector last confirmed speech, this is when the sound that
+    /// earned that confirmation actually started - not the (later) moment
+    /// enough evidence had accumulated to believe it. Nil whenever
+    /// `isSpeaking` is false. This is the back-dated timestamp a turn timer
+    /// should use instead of "now".
+    private(set) var speechStartedAt: Date?
 
-    private var aboveSince: Date?
+    /// Seconds of accumulated loudness, in `0...evidenceCap`. Rises while
+    /// loud, decays while quiet; speech confirms once it reaches
+    /// `onsetEvidence`. Exposed read-only for the debug log, to help tune
+    /// `onsetEvidence` and `absoluteGate` against a real room.
+    private(set) var evidence: TimeInterval = 0
+    /// When the current unbroken run of evidence-building began - i.e. the
+    /// real onset of whatever sound is currently pushing `evidence` up. Nil
+    /// whenever `evidence` is zero.
+    ///
+    /// Known tradeoff: this only resets when `evidence` fully decays to zero,
+    /// not on every quiet sample. That's what lets speech survive brief gaps
+    /// without losing its credited start, but it also means two unrelated
+    /// transients close enough together (a cough, then a keystroke a moment
+    /// later, then real speech) can chain into one candidate and back-date
+    /// the confirmed turn to the first of them. The overcount is bounded by
+    /// how long it takes evidence to drain between transients, and the turn
+    /// still can't confirm on the transients alone - only real speech can
+    /// push it over `onsetEvidence` - so this trades a small, rare timing
+    /// error for the gap-tolerance the design is built around.
+    private var candidateStartedAt: Date?
     private var belowSince: Date?
     private var lastUpdate: Date?
 
@@ -82,13 +121,14 @@ struct VoiceActivityDetector {
     init(
         sensitivity: Sensitivity = .normal,
         releaseMargin: Float = 6,
-        minimumOnset: TimeInterval = 0.15,
+        onsetEvidence: TimeInterval = 0.6,
         hangover: TimeInterval = 0.7,
         absoluteGate: Float = -50
     ) {
         self.onsetMargin = sensitivity.onsetMargin
         self.releaseMargin = releaseMargin
-        self.minimumOnset = minimumOnset
+        self.onsetEvidence = onsetEvidence
+        self.evidenceCap = onsetEvidence * 2
         self.hangover = hangover
         self.absoluteGate = absoluteGate
         // Start pessimistic, at the top of the range. The tracker falls fast
@@ -115,19 +155,27 @@ struct VoiceActivityDetector {
 
         let margin = isSpeaking ? releaseMargin : onsetMargin
         let isLoud = dBFS > absoluteGate && dBFS > noiseFloor + margin
+        // Clamp: after a stalled run loop or a wake from sleep, `elapsed`
+        // could be seconds long, and a single loud sample must not be able to
+        // confirm speech outright just because the app was asleep.
+        let dt = min(elapsed, 0.1)
 
         if isLoud {
             belowSince = nil
-            if aboveSince == nil { aboveSince = now }
-            if !isSpeaking, let since = aboveSince, now.timeIntervalSince(since) >= minimumOnset {
+            if evidence == 0 { candidateStartedAt = now }
+            evidence = min(evidence + dt, evidenceCap)
+            if !isSpeaking, evidence >= onsetEvidence {
                 isSpeaking = true
+                speechStartedAt = candidateStartedAt ?? now
             }
         } else {
-            aboveSince = nil
             if belowSince == nil { belowSince = now }
             if isSpeaking, let since = belowSince, now.timeIntervalSince(since) >= hangover {
                 isSpeaking = false
+                speechStartedAt = nil
             }
+            evidence = max(evidence - dt, 0)
+            if evidence == 0 { candidateStartedAt = nil }
         }
 
         return isSpeaking
@@ -137,7 +185,9 @@ struct VoiceActivityDetector {
     /// audio source goes away entirely, where there is no signal left to decay.
     mutating func reset() {
         isSpeaking = false
-        aboveSince = nil
+        speechStartedAt = nil
+        evidence = 0
+        candidateStartedAt = nil
         belowSince = nil
         lastUpdate = nil
         noiseFloor = floorRange.upperBound

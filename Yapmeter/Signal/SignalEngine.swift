@@ -30,14 +30,8 @@ final class SignalEngine {
     private var farEndDetector: VoiceActivityDetector
     private var nearEndDetector: VoiceActivityDetector
     private var stateMachine = SignalStateMachine()
+    private var turnClock = TurnClock()
     private var tickTimer: Timer?
-
-    /// Your turn ends after this much silence. Longer than the detector's
-    /// hangover on purpose: pausing for breath mid-sentence shouldn't reset
-    /// the clock, but a genuine handover should.
-    private let turnEndGap: TimeInterval = 2.0
-    private var turnStartedAt: Date?
-    private var lastNearSpeechAt: Date?
 
     private static let sensitivityKey = "sensitivity"
     private static let logger = Logger(subsystem: "fyi.kaegan.yapmeter", category: "signal")
@@ -48,7 +42,12 @@ final class SignalEngine {
         let stored = UserDefaults.standard.string(forKey: Self.sensitivityKey)
         let sensitivity = stored.flatMap(VoiceActivityDetector.Sensitivity.init(rawValue:)) ?? .normal
         self.sensitivity = sensitivity
-        self.farEndDetector = VoiceActivityDetector(sensitivity: sensitivity)
+        // The far end gets a shorter onset than the near end's default: it
+        // drives the block lamp, not the turn timer, and the lamp's dwell
+        // (1.2s) plus the detector's hangover (0.7s) is already close to the
+        // near end's 0.6s onset - stacking the full onset on top would let an
+        // ordinary mid-sentence pause on their end flash the lamp clear.
+        self.farEndDetector = VoiceActivityDetector(sensitivity: sensitivity, onsetEvidence: 0.25)
         self.nearEndDetector = VoiceActivityDetector(sensitivity: sensitivity)
     }
 
@@ -80,7 +79,8 @@ final class SignalEngine {
             // the hangover keep a stale "speaking" alive across meetings.
             farEndDetector.reset()
             nearEndDetector.reset()
-            endTurn()
+            turnClock.reset()
+            update(\.speakingSeconds, to: nil)
             update(\.farEndSpeaking, to: false)
             update(\.nearEndSpeaking, to: false)
             update(\.aspect, to: stateMachine.aspect(
@@ -98,7 +98,9 @@ final class SignalEngine {
 
         update(\.farEndSpeaking, to: far)
         update(\.nearEndSpeaking, to: near)
-        updateTurnTimer(nearSpeaking: near, now: now)
+        update(\.speakingSeconds, to: turnClock.update(
+            speaking: near, speechStartedAt: nearEndDetector.speechStartedAt, now: now
+        ))
         update(\.aspect, to: stateMachine.aspect(
             meetingActive: true, nearSpeaking: near, farSpeaking: far, now: now
         ))
@@ -113,27 +115,8 @@ final class SignalEngine {
         let nearText = levels.nearEnd.map { String(format: "%.1f", $0) } ?? "none"
         let farText = levels.farEnd.map { String(format: "%.1f", $0) } ?? "none"
         Self.logger.debug(
-            "near \(nearText, privacy: .public) dBFS floor \(self.nearEndDetector.noiseFloor, format: .fixed(precision: 1), privacy: .public) speaking \(near, privacy: .public) | far \(farText, privacy: .public) dBFS floor \(self.farEndDetector.noiseFloor, format: .fixed(precision: 1), privacy: .public) speaking \(far, privacy: .public)"
+            "near \(nearText, privacy: .public) dBFS floor \(self.nearEndDetector.noiseFloor, format: .fixed(precision: 1), privacy: .public) evidence \(self.nearEndDetector.evidence, format: .fixed(precision: 2), privacy: .public) speaking \(near, privacy: .public) | far \(farText, privacy: .public) dBFS floor \(self.farEndDetector.noiseFloor, format: .fixed(precision: 1), privacy: .public) speaking \(far, privacy: .public)"
         )
-    }
-
-    private func updateTurnTimer(nearSpeaking: Bool, now: Date) {
-        if nearSpeaking {
-            if turnStartedAt == nil { turnStartedAt = now }
-            lastNearSpeechAt = now
-        } else if let last = lastNearSpeechAt, now.timeIntervalSince(last) > turnEndGap {
-            endTurn()
-            return
-        }
-
-        let seconds = turnStartedAt.map { Int(now.timeIntervalSince($0)) }
-        update(\.speakingSeconds, to: seconds)
-    }
-
-    private func endTurn() {
-        turnStartedAt = nil
-        lastNearSpeechAt = nil
-        update(\.speakingSeconds, to: nil)
     }
 
     /// Assign only on change. `@Observable` notifies on every write, and this
