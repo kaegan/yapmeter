@@ -33,9 +33,21 @@ FROM "collection://d0115c29-c2f0-4b88-bf5e-a8df40131280"
 WHERE "userDefined:ID" = 12
 ```
 
-Then fetch the page URL for the body. Page bodies follow the ticket
-template: `## Problem`, `## Acceptance Criteria`, `## Out of Scope`,
-`## Notes`. If `Parent` is set, fetch the epic too; it usually carries the
+Then fetch the page URL for the body. Page bodies follow the template for
+their `Type`:
+
+- **Feature**: `## Problem`, `## Acceptance Criteria`, `## Out of Scope`,
+  `## Notes`.
+- **Bug**: `## What happened`, `## What you expected`, `## Where`,
+  `## Notes`. Planning adds `## Diagnosis`, then `## Plan`.
+- **Epic**: `## Problem`, `## Definition of done`, `## Out of Scope`,
+  `## Notes`.
+- **Idea**: `## The idea`, `## Who it's for`, `## Notes`. An Idea is
+  planned by first rewriting it into the Feature sections.
+- **Chore**: `## What`, `## Why now`, `## Done when`.
+
+A ticket that is missing its sections is a thin ticket for the questions
+gate below. If `Parent` is set, fetch the epic too; it usually carries the
 context the sub-item leaves out.
 
 ### Page icons
@@ -53,9 +65,9 @@ colours match the `Type` select options. Pass the URL as `icon` on
 | Idea    | `https://www.notion.so/icons/light-bulb_yellow.svg` |
 | Chore   | `https://www.notion.so/icons/wrench_gray.svg`     |
 
-The "New Feature Ticket" template carries the Feature icon, so a ticket
-Kaegan makes from it needs no icon step. One he makes without the template
-gets its icon the next time a session touches it.
+The Notion templates (one per Type) carry the icon and preset the Type, so
+a ticket Kaegan makes from one needs no icon step. One made without a
+template gets its icon the next time a session touches it.
 
 Status values, in order: `Idea`, `Next Up`, `Planning`, `Building`,
 `Reviewing`, `Done`, `Not doing`. Never hand-edit the `GitHub` relation;
