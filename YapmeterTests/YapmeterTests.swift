@@ -36,6 +36,25 @@ final class VoiceActivityDetectorTests: XCTestCase {
         return now
     }
 
+    /// Alternate loud and quiet stretches, as speech-with-gaps or intermittent
+    /// typing would look, for `count` repeats of (loud, quiet).
+    private func feedBursts(
+        _ detector: inout VoiceActivityDetector,
+        loudDBFS: Float,
+        quietDBFS: Float,
+        loudSeconds: TimeInterval,
+        quietSeconds: TimeInterval,
+        count: Int,
+        from start: Date
+    ) -> Date {
+        var now = start
+        for _ in 0..<count {
+            now = feed(&detector, dBFS: loudDBFS, seconds: loudSeconds, from: now)
+            now = feed(&detector, dBFS: quietDBFS, seconds: quietSeconds, from: now)
+        }
+        return now
+    }
+
     func testSteadyRoomNoiseIsNotSpeech() {
         var detector = VoiceActivityDetector()
         let start = Date(timeIntervalSince1970: 0)
@@ -59,9 +78,50 @@ final class VoiceActivityDetectorTests: XCTestCase {
         var detector = VoiceActivityDetector()
         let start = Date(timeIntervalSince1970: 0)
         var now = feed(&detector, dBFS: -60, seconds: 5, from: start)
-        // A keyboard click: loud, but gone well inside the 150ms onset window.
+        // A keyboard click: loud, but gone well inside the 600ms evidence
+        // window needed to confirm speech.
         now = feed(&detector, dBFS: -20, seconds: 0.06, from: now)
         XCTAssertFalse(detector.isSpeaking)
+    }
+
+    func testCoughIsRejected() {
+        var detector = VoiceActivityDetector()
+        let start = Date(timeIntervalSince1970: 0)
+        var now = feed(&detector, dBFS: -60, seconds: 5, from: start)
+        // A cough: much longer than a keyboard click, but still well short of
+        // the 600ms of accumulated evidence speech needs.
+        now = feed(&detector, dBFS: -25, seconds: 0.4, from: now)
+        XCTAssertFalse(detector.isSpeaking)
+        XCTAssertNil(detector.speechStartedAt)
+        _ = feed(&detector, dBFS: -60, seconds: 1, from: now)
+        XCTAssertFalse(detector.isSpeaking)
+    }
+
+    func testIntermittentTypingIsRejected() {
+        var detector = VoiceActivityDetector()
+        let start = Date(timeIntervalSince1970: 0)
+        var now = feed(&detector, dBFS: -60, seconds: 5, from: start)
+        // A 50% duty cycle of clicks: evidence rises and decays by the same
+        // amount each burst, so it never climbs to the onset threshold.
+        now = feedBursts(
+            &detector, loudDBFS: -25, quietDBFS: -60,
+            loudSeconds: 0.1, quietSeconds: 0.1, count: 40, from: now
+        )
+        XCTAssertFalse(detector.isSpeaking)
+    }
+
+    func testSpeechWithInterWordGapsIsDetected() {
+        var detector = VoiceActivityDetector()
+        let start = Date(timeIntervalSince1970: 0)
+        var now = feed(&detector, dBFS: -60, seconds: 5, from: start)
+        // A word/gap pattern that's mostly loud (0.4s on, 0.1s off - an 80%
+        // duty cycle) should still accumulate to the onset threshold, just a
+        // bit slower than continuous speech would.
+        now = feedBursts(
+            &detector, loudDBFS: -25, quietDBFS: -60,
+            loudSeconds: 0.4, quietSeconds: 0.1, count: 4, from: now
+        )
+        XCTAssertTrue(detector.isSpeaking)
     }
 
     func testHangoverBridgesGapsBetweenWords() {
@@ -76,6 +136,49 @@ final class VoiceActivityDetectorTests: XCTestCase {
         // ...but a real stop should.
         now = feed(&detector, dBFS: -60, seconds: 1.0, from: now)
         XCTAssertFalse(detector.isSpeaking)
+    }
+
+    func testSpeechStartIsBackDatedToFirstLoudSample() {
+        var detector = VoiceActivityDetector()
+        let start = Date(timeIntervalSince1970: 0)
+        let quietEnd = feed(&detector, dBFS: -60, seconds: 5, from: start)
+        _ = feed(&detector, dBFS: -25, seconds: 1, from: quietEnd)
+        XCTAssertTrue(detector.isSpeaking)
+        // The reported start is when the voice actually began, not the later
+        // moment enough evidence had piled up to believe it.
+        XCTAssertNotNil(detector.speechStartedAt)
+        XCTAssertEqual(
+            detector.speechStartedAt!.timeIntervalSince(quietEnd), 0, accuracy: 0.05
+        )
+    }
+
+    func testAbandonedCandidateIsForgotten() {
+        var detector = VoiceActivityDetector()
+        let start = Date(timeIntervalSince1970: 0)
+        var now = feed(&detector, dBFS: -60, seconds: 5, from: start)
+        // A cough starts a candidate, but it never confirms...
+        now = feed(&detector, dBFS: -25, seconds: 0.3, from: now)
+        // ...and the evidence decays back to zero during a real quiet stretch.
+        now = feed(&detector, dBFS: -60, seconds: 1, from: now)
+        // When speech actually starts, its back-dated start must be its own
+        // onset, not the abandoned cough from a second earlier.
+        let speechStart = now
+        _ = feed(&detector, dBFS: -25, seconds: 1, from: now)
+        XCTAssertTrue(detector.isSpeaking)
+        XCTAssertEqual(
+            detector.speechStartedAt!.timeIntervalSince(speechStart), 0, accuracy: 0.05
+        )
+    }
+
+    func testSpeechStartClearsOnRelease() {
+        var detector = VoiceActivityDetector()
+        let start = Date(timeIntervalSince1970: 0)
+        var now = feed(&detector, dBFS: -60, seconds: 5, from: start)
+        now = feed(&detector, dBFS: -25, seconds: 1, from: now)
+        XCTAssertNotNil(detector.speechStartedAt)
+        _ = feed(&detector, dBFS: -60, seconds: 1.0, from: now)
+        XCTAssertFalse(detector.isSpeaking)
+        XCTAssertNil(detector.speechStartedAt)
     }
 
     func testLowSensitivityNeedsAWiderMargin() {
@@ -99,6 +202,142 @@ final class VoiceActivityDetectorTests: XCTestCase {
         let now = feed(&detector, dBFS: -90, seconds: 10, from: start)
         _ = feed(&detector, dBFS: -55, seconds: 2, from: now)
         XCTAssertFalse(detector.isSpeaking)
+    }
+}
+
+final class LevelAnalysisTests: XCTestCase {
+    /// Builds a buffer of `sliceCount` 10ms-equivalent slices, each either
+    /// loud or quiet, at a fixed slice length.
+    private func buffer(sliceLength: Int, loudSlices: [Bool], loudAmplitude: Float = 0.3, quietAmplitude: Float = 0.001) -> [Float] {
+        var samples: [Float] = []
+        for loud in loudSlices {
+            let amplitude = loud ? loudAmplitude : quietAmplitude
+            samples.append(contentsOf: Array(repeating: amplitude, count: sliceLength))
+        }
+        return samples
+    }
+
+    func testClickInQuietBufferReadsAsQuiet() {
+        // Two loud slices out of ten - a keystroke - should not move the
+        // sustained level far from the quiet floor, even though the
+        // whole-buffer RMS is dominated by the loud samples.
+        let samples = buffer(sliceLength: 480, loudSlices: [true, true] + Array(repeating: false, count: 8))
+        samples.withUnsafeBufferPointer { pointer in
+            let sustained = LevelAnalysis.sustainedDBFS(pointer, sliceLength: 480)
+            let whole = LevelAnalysis.rmsDBFS(pointer)
+            XCTAssertLessThan(sustained, whole - 10)
+            let quietOnly = Array(repeating: Float(0.001), count: 480)
+            quietOnly.withUnsafeBufferPointer { quietPointer in
+                XCTAssertEqual(sustained, LevelAnalysis.rmsDBFS(quietPointer), accuracy: 1)
+            }
+        }
+    }
+
+    func testSteadyToneReadsAsItsRMS() {
+        let samples = Array(repeating: Float(0.1), count: 4800)
+        samples.withUnsafeBufferPointer { pointer in
+            let sustained = LevelAnalysis.sustainedDBFS(pointer, sliceLength: 480)
+            let whole = LevelAnalysis.rmsDBFS(pointer)
+            XCTAssertEqual(sustained, whole, accuracy: 0.5)
+        }
+    }
+
+    func testSpeechLikeBufferWithGapsStillReadsLoud() {
+        // Six loud slices, four quiet - the majority is loud, so the median
+        // (upper, index 5 of 10) should land on a loud slice.
+        let loudPattern = [true, false, true, true, false, true, true, false, true, false]
+        let samples = buffer(sliceLength: 480, loudSlices: loudPattern)
+        samples.withUnsafeBufferPointer { pointer in
+            let sustained = LevelAnalysis.sustainedDBFS(pointer, sliceLength: 480)
+            let loudOnly = Array(repeating: Float(0.3), count: 480)
+            loudOnly.withUnsafeBufferPointer { loudPointer in
+                XCTAssertEqual(sustained, LevelAnalysis.rmsDBFS(loudPointer), accuracy: 0.5)
+            }
+        }
+    }
+
+    func testShortBufferFallsBackToWholeBufferRMS() {
+        // 1024 samples at a 480-sample slice length is only two slices, under
+        // `minimumSlices`, so this must fall back to plain RMS.
+        let samples = Array(repeating: Float(0.2), count: 1024)
+        samples.withUnsafeBufferPointer { pointer in
+            let sustained = LevelAnalysis.sustainedDBFS(pointer, sliceLength: 480)
+            let whole = LevelAnalysis.rmsDBFS(pointer)
+            XCTAssertEqual(sustained, whole, accuracy: 0.01)
+        }
+    }
+
+    func testSilenceIsFloored() {
+        let samples = Array(repeating: Float(0), count: 4800)
+        samples.withUnsafeBufferPointer { pointer in
+            let sustained = LevelAnalysis.sustainedDBFS(pointer, sliceLength: 480)
+            XCTAssertLessThan(sustained, -100)
+        }
+    }
+}
+
+final class TurnClockTests: XCTestCase {
+    private let start = Date(timeIntervalSince1970: 0)
+
+    func testStartsFromBackDatedOnset() {
+        var clock = TurnClock()
+        // Speech is confirmed "now", but it actually began 0.5s earlier.
+        let onset = start
+        let confirmedAt = start.addingTimeInterval(0.5)
+        let seconds = clock.update(speaking: true, speechStartedAt: onset, now: confirmedAt)
+        XCTAssertEqual(seconds, 0)
+        let later = clock.update(speaking: true, speechStartedAt: onset, now: confirmedAt.addingTimeInterval(0.5))
+        XCTAssertEqual(later, 1)
+    }
+
+    func testFallsBackToNowWithoutABackDatedOnset() {
+        var clock = TurnClock()
+        let seconds = clock.update(speaking: true, speechStartedAt: nil, now: start)
+        XCTAssertEqual(seconds, 0)
+    }
+
+    func testEndsAfterGap() {
+        var clock = TurnClock()
+        _ = clock.update(speaking: true, speechStartedAt: start, now: start)
+        let stillRunning = clock.update(
+            speaking: false, speechStartedAt: nil, now: start.addingTimeInterval(1.9)
+        )
+        XCTAssertEqual(stillRunning, 1)
+        let ended = clock.update(
+            speaking: false, speechStartedAt: nil, now: start.addingTimeInterval(2.1)
+        )
+        XCTAssertNil(ended)
+    }
+
+    func testResumingInsideTheGapContinuesTheTurn() {
+        var clock = TurnClock()
+        _ = clock.update(speaking: true, speechStartedAt: start, now: start)
+        _ = clock.update(speaking: true, speechStartedAt: start, now: start.addingTimeInterval(0.5))
+        // Goes quiet for long enough that the turn ends internally...
+        _ = clock.update(speaking: false, speechStartedAt: nil, now: start.addingTimeInterval(3))
+        // ...but the resumption's back-dated onset falls inside the 2s gap
+        // measured from the last confirmed speech, so the original start
+        // should be restored rather than starting a fresh turn at +3.4s.
+        let resumeOnset = start.addingTimeInterval(2.2)
+        let seconds = clock.update(speaking: true, speechStartedAt: resumeOnset, now: start.addingTimeInterval(3.4))
+        XCTAssertEqual(seconds, 3)
+    }
+
+    func testResumingAfterTheGapStartsFresh() {
+        var clock = TurnClock()
+        _ = clock.update(speaking: true, speechStartedAt: start, now: start)
+        _ = clock.update(speaking: false, speechStartedAt: nil, now: start.addingTimeInterval(3))
+        let resumeOnset = start.addingTimeInterval(10)
+        let seconds = clock.update(speaking: true, speechStartedAt: resumeOnset, now: start.addingTimeInterval(10.4))
+        XCTAssertEqual(seconds, 0)
+    }
+
+    func testResetForgetsEverything() {
+        var clock = TurnClock()
+        _ = clock.update(speaking: true, speechStartedAt: start, now: start)
+        clock.reset()
+        let seconds = clock.update(speaking: false, speechStartedAt: nil, now: start.addingTimeInterval(0.1))
+        XCTAssertNil(seconds)
     }
 }
 
