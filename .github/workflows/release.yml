@@ -178,6 +178,21 @@ jobs:
             -exportPath "$RUNNER_TEMP/export" \
             -exportOptionsPlist "$RUNNER_TEMP/ExportOptions.plist"
 
+      - name: Check the app can open the microphone
+        run: |
+          # The hardened runtime refuses the microphone to an app without
+          # this entitlement, silently and whatever System Settings shows.
+          # v0.1.2 shipped that way (YB-42): the far end worked, the turn
+          # timer never ran. Debug builds are signed ad hoc without the
+          # hardened runtime, so only a release build can catch it.
+          APP="$RUNNER_TEMP/export/Yapmeter.app"
+          codesign -d --entitlements - --xml "$APP" > "$RUNNER_TEMP/entitlements.plist"
+          cat "$RUNNER_TEMP/entitlements.plist"
+          if [ "$(/usr/libexec/PlistBuddy -c 'Print :com.apple.security.device.audio-input' "$RUNNER_TEMP/entitlements.plist" 2>/dev/null)" != "true" ]; then
+            echo "::error::Yapmeter.app is missing the com.apple.security.device.audio-input entitlement, so the microphone would be refused. Check Yapmeter/Yapmeter.entitlements is wired up in project.yml."
+            exit 1
+          fi
+
       - name: Notarize and staple
         env:
           APPLE_ID: ${{ secrets.APPLE_ID }}
