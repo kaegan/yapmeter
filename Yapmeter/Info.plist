@@ -33,7 +33,7 @@
 	<key>SUFeedURL</key>
 	<string>https://yapmeter.com/appcast.xml</string>
 	<key>SUPublicEDKey</key>
-	<string>REPLACE_WITH_SPARKLE_PUBLIC_ED_KEY</string>
+	<string>l68kmfUMZzp4pfrvkG+MB2lQZ5RnKDqgTo53jHKY+7Y=</string>
 	<key>SUEnableAutomaticChecks</key>
 	<true/>
 	<key>SUScheduledCheckInterval</key>
