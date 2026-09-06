@@ -203,6 +203,21 @@ final class VoiceActivityDetectorTests: XCTestCase {
         _ = feed(&detector, dBFS: -55, seconds: 2, from: now)
         XCTAssertFalse(detector.isSpeaking)
     }
+
+    /// YB-50. A room that is quiet first and then gains a steady noise (a
+    /// dryer starting in the next room, a fan kicking in) must not read as
+    /// speech for the rest of the session. The floor only rises with an
+    /// 8s time constant, so the step clears the onset margin long before the
+    /// floor catches up; if the floor then freezes, nothing ever releases.
+    func testSteadyNoiseStartingAfterAQuietRoomReleases() {
+        var detector = VoiceActivityDetector()
+        let start = Date(timeIntervalSince1970: 0)
+        var now = feed(&detector, dBFS: -65, seconds: 5, from: start)
+        XCTAssertFalse(detector.isSpeaking)
+        now = feed(&detector, dBFS: -45, seconds: 60, from: now)
+        XCTAssertFalse(detector.isSpeaking, "a minute of constant -45 dBFS is a fan, not a voice")
+        XCTAssertGreaterThan(detector.noiseFloor, -50, "the floor should have risen to meet the new steady level")
+    }
 }
 
 final class LevelAnalysisTests: XCTestCase {
