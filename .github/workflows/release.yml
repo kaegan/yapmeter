@@ -103,8 +103,14 @@ jobs:
           sudo xcode-select -s "$latest"
           xcodebuild -version
 
-      - name: Install XcodeGen
-        run: brew install xcodegen
+      - name: Install XcodeGen and dmgbuild
+        run: |
+          brew install xcodegen
+          # dmgbuild lays out the installer's Finder window by writing the
+          # volume's .DS_Store itself, which is what lets scripts/make-dmg.sh
+          # run on a runner with no Finder session to drive. pipx, because
+          # the runner's python is Homebrew's and refuses a bare pip install.
+          pipx install dmgbuild
 
       - name: Import the Developer ID certificate
         env:
@@ -231,13 +237,38 @@ jobs:
         id: package
         run: |
           # Named without the version on purpose. The tag already makes the
-          # download URL unique per release, and a fixed name is what lets
-          # yapmeter.com link at /releases/latest/download/Yapmeter.zip and
-          # never touch the link again.
+          # download URL unique per release, and a fixed name is what keeps
+          # the appcast URL and the site's link stable across releases. The
+          # zip is what Sparkle downloads; people get the disk image below.
           ZIP="$RUNNER_TEMP/Yapmeter.zip"
           ditto -c -k --keepParent "$RUNNER_TEMP/export/Yapmeter.app" "$ZIP"
           echo "zip=$ZIP" >> "$GITHUB_OUTPUT"
           echo "length=$(stat -f%z "$ZIP")" >> "$GITHUB_OUTPUT"
+
+      - name: Build the installer image
+        id: dmg
+        env:
+          APPLE_ID: ${{ secrets.APPLE_ID }}
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+          APPLE_APP_SPECIFIC_PASSWORD: ${{ secrets.APPLE_APP_SPECIFIC_PASSWORD }}
+        run: |
+          # The download people click: the app on the left, Applications on
+          # the right, an arrow between them. Built from the stapled app, so
+          # the copy inside is already accepted offline; the image itself
+          # is signed and notarized as well so Gatekeeper trusts it before
+          # anything is dragged out of it. Same fixed name as the zip, for
+          # yapmeter.com's /releases/latest/download/Yapmeter.dmg link.
+          DMG="$RUNNER_TEMP/Yapmeter.dmg"
+          scripts/make-dmg.sh "$RUNNER_TEMP/export/Yapmeter.app" "$DMG"
+          codesign --sign "Developer ID Application" --timestamp "$DMG"
+          xcrun notarytool submit "$DMG" \
+            --apple-id "$APPLE_ID" \
+            --team-id "$APPLE_TEAM_ID" \
+            --password "$APPLE_APP_SPECIFIC_PASSWORD" \
+            --wait
+          xcrun stapler staple "$DMG"
+          spctl --assess --type open --context context:primary-signature --verbose "$DMG"
+          echo "dmg=$DMG" >> "$GITHUB_OUTPUT"
 
       - name: Sign the archive for Sparkle
         id: sign
@@ -319,9 +350,11 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          # Both land on the same release: the zip is what the appcast points
-          # at, and the appcast is what yapmeter.com serves as the feed.
+          # All three land on the same release: the disk image is what the
+          # site's download button fetches, the zip is what the appcast
+          # points at, and the appcast is what yapmeter.com serves as the feed.
           gh release upload "$GITHUB_REF_NAME" \
+            "${{ steps.dmg.outputs.dmg }}" \
             "${{ steps.package.outputs.zip }}" \
             "$RUNNER_TEMP/appcast.xml" \
             --clobber

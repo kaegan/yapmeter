@@ -1,0 +1,16 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 660 400" width="660" height="400">
+  <!-- The Finder window behind the installer: Yap's cream, the strawberry
+       arrow pointing from the app (icon centred at 165,190) to the
+       Applications folder (centred at 495,190), and one line of copy. -->
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#FFFAF1"/>
+      <stop offset="1" stop-color="#FFEFDA"/>
+    </linearGradient>
+  </defs>
+  <rect width="660" height="400" fill="url(#bg)"/>
+  <!-- Centred between the icons: the app's right edge is at 229, the folder's left edge at 431, so the arrow sits around 330. A solid colour because a gradient on a horizontal line has no height to map onto and draws nothing. -->
+  <path d="M284 190 H372" fill="none" stroke="#FF4D6E" stroke-width="8" stroke-linecap="round"/>
+  <path d="M352 166 L376 190 L352 214" fill="none" stroke="#FF4D6E" stroke-width="8" stroke-linecap="round" stroke-linejoin="round"/>
+  <text x="330" y="326" text-anchor="middle" font-family="-apple-system, 'SF Pro Text', 'Helvetica Neue', Helvetica, Arial, sans-serif" font-size="17" font-weight="600" fill="#4A2C2A">Drag and drop Yapmeter into Applications</text>
+</svg>

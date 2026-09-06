@@ -200,8 +200,11 @@ One-time setup, in this order:
    the newest GitHub release, so the URL baked into every shipped binary is one
    we own. That URL can never change: an old build only ever asks the address
    it was compiled with. The download button on the site wants
-   `https://github.com/kaegan/yapmeter/releases/latest/download/Yapmeter.zip`,
-   which is why the archive is named without its version.
+   `https://github.com/kaegan/yapmeter/releases/latest/download/Yapmeter.dmg`,
+   which is why the disk image and the zip are named without their version.
+   The zip is what Sparkle updates from; the disk image is the installer
+   people open, laid out by `scripts/make-dmg.sh` (the app, an Applications
+   shortcut, and the background from `scripts/dmg/`).
 
 Then each release is a tag:
 
