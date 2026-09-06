@@ -158,6 +158,14 @@ and the build number from `git rev-list --count HEAD`, so `CFBundleVersion`
 always increases — Sparkle compares that number and nothing else, and one
 release that repeats it leaves those users unable to update.
 
+The release notes are built from the PRs the tag ships, by
+`scripts/release_notes.py`. A PR labelled `enhancement` becomes a line under
+**New features** and one labelled `bug` a line under **Bug fixes**; the line
+is the PR title with its `[YB-n]` prefix removed, so write titles for the
+person reading the update dialog. Unlabelled PRs (tooling, CI, docs) are left
+out, and a release with nothing labelled says "Small fixes and improvements".
+The same notes are the GitHub release body and the appcast entry.
+
 ## Status
 
 Milestone 3: automatic meeting detection, voice activity detection on both

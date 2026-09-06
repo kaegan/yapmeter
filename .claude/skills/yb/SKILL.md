@@ -162,7 +162,13 @@ it. This command applies those comments.
    xcodegen generate && xcodebuild test -project Yapmeter.xcodeproj -scheme Yapmeter -configuration Debug -derivedDataPath build/DerivedData CODE_SIGNING_ALLOWED=NO
    ```
 6. Commit, push, and open the PR:
-   - Title: `[YB-12] <ticket name>`.
+   - Title: `[YB-12] <ticket name>`. The title, minus the prefix, is the
+     line the ticket gets in the release notes, so for a Bug say what now
+     works rather than what was broken (`[YB-42] Hear the far end again`,
+     not `[YB-42] The app isn't detecting audio`).
+   - Label: `enhancement` for a Feature, `bug` for a Bug, none for a Chore
+     or anything else (`--label enhancement` on `gh pr create`). Only
+     labelled PRs appear in the release notes.
    - Body: a **What** and a **Why** paragraph, then a line reading
      `close YB-12` on its own (use `ref YB-12` if the PR does not finish
      the ticket). CI fails a PR without that line, and it is what links

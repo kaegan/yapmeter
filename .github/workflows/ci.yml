@@ -5,6 +5,9 @@ name: CI
 # branch always has a known-good build to release from.
 on:
   pull_request:
+    # `edited` is what re-runs ticket-link after the description is fixed;
+    # without it a PR whose body was corrected after opening stays red.
+    types: [opened, synchronize, reopened, edited]
   push:
     branches:
       - main
