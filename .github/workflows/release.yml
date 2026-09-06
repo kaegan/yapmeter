@@ -257,10 +257,20 @@ jobs:
           # Create it now, before the appcast is built, because the appcast
           # embeds the release notes and they live on the release. A release
           # made by hand ahead of the tag keeps its own notes.
-          gh release view "$GITHUB_REF_NAME" >/dev/null 2>&1 || \
+          #
+          # The notes are written by scripts/release_notes.py rather than
+          # --generate-notes: they show up in Sparkle's update dialog, where
+          # a list of PR titles with links is noise. Only PRs labelled
+          # `enhancement` or `bug` appear, under "New features" and "Bug
+          # fixes"; everything else is left out.
+          if ! gh release view "$GITHUB_REF_NAME" >/dev/null 2>&1; then
+            python3 scripts/release_notes.py \
+              --repo "${{ github.repository }}" \
+              --tag "$GITHUB_REF_NAME" > "$RUNNER_TEMP/release-notes.md"
             gh release create "$GITHUB_REF_NAME" \
               --title "${{ steps.version.outputs.version }}" \
-              --generate-notes
+              --notes-file "$RUNNER_TEMP/release-notes.md"
+          fi
 
       - name: Update the appcast
         env:
