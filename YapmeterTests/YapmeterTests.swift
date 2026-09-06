@@ -517,6 +517,46 @@ final class SignalStateMachineTests: XCTestCase {
         )
         XCTAssertEqual(aspect, .caution)
     }
+    func testYourPauseHoldsTheBlockForTheGap() {
+        var machine = SignalStateMachine()
+        machine.nearHold = 2.0
+        _ = machine.aspect(meetingActive: true, nearSpeaking: true, farSpeaking: false, now: start)
+
+        func aspectAfter(_ seconds: TimeInterval) -> Aspect {
+            machine.aspect(
+                meetingActive: true,
+                nearSpeaking: false,
+                farSpeaking: false,
+                now: start.addingTimeInterval(seconds)
+            )
+        }
+
+        // A breath mid-sentence is still your turn...
+        XCTAssertEqual(aspectAfter(0.02), .speaking)
+        XCTAssertEqual(aspectAfter(1.9), .speaking)
+        // ...a real stop is not.
+        XCTAssertEqual(aspectAfter(2.1), .clear)
+    }
+
+    func testTheFarEndCuttingInEndsYourHoldAtOnce() {
+        var machine = SignalStateMachine()
+        machine.nearHold = 2.0
+        _ = machine.aspect(meetingActive: true, nearSpeaking: true, farSpeaking: false, now: start)
+        _ = machine.aspect(meetingActive: true, nearSpeaking: false, farSpeaking: false, now: start.addingTimeInterval(0.5))
+        let interrupted = machine.aspect(
+            meetingActive: true, nearSpeaking: false, farSpeaking: true, now: start.addingTimeInterval(1.0)
+        )
+        XCTAssertEqual(interrupted, .occupied)
+        // When they stop, your hold does not come back: that pause is theirs.
+        let theirPause = machine.aspect(
+            meetingActive: true, nearSpeaking: false, farSpeaking: false, now: start.addingTimeInterval(1.1)
+        )
+        XCTAssertEqual(theirPause, .caution)
+    }
+
+    func testTheHoldFollowsTheTurnClockGap() {
+        XCTAssertEqual(SignalStateMachine().nearHold, TurnClock().endGap)
+    }
 }
 
 @MainActor

@@ -98,12 +98,18 @@ final class SignalEngine {
 
         update(\.farEndSpeaking, to: far)
         update(\.nearEndSpeaking, to: near)
-        update(\.speakingSeconds, to: turnClock.update(
-            speaking: near, speechStartedAt: nearEndDetector.speechStartedAt, now: now
-        ))
-        update(\.aspect, to: stateMachine.aspect(
+        let aspect = stateMachine.aspect(
             meetingActive: true, nearSpeaking: near, farSpeaking: far, now: now
-        ))
+        )
+        // The clock runs every tick so a resumption inside its gap still
+        // reconnects to the original start, but its count is only shown
+        // while the pet is blue. Blue with a timer, or another colour with
+        // none: the two can't disagree, whatever either struct decides.
+        let seconds = turnClock.update(
+            speaking: near, speechStartedAt: nearEndDetector.speechStartedAt, now: now
+        )
+        update(\.speakingSeconds, to: aspect == .speaking ? seconds : nil)
+        update(\.aspect, to: aspect)
     }
 
     /// Once a second, for when the detector misbehaves in a room you can't
