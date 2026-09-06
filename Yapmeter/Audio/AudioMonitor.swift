@@ -110,6 +110,7 @@ final class AudioMonitor {
     /// switch is turned on.
     private var witnessLocale: Locale?
     private var modelTask: Task<Void, Never>?
+    private var isStartingWitness = false
 
     /// How often we ask CoreAudio which meeting processes are live.
     private let detectInterval: TimeInterval = 2
@@ -335,17 +336,28 @@ final class AudioMonitor {
         }
 
         guard !Task.isCancelled, confirmWithWords else { return }
-        // Capture that is already running has a microphone tap with no
-        // observer on it, and a tap can't be given one after the fact.
-        restartCapture()
+        // The model can become ready long after capture started - at launch
+        // with a call already running, or the first time the switch is turned
+        // on mid-call. The microphone's buffer observer can be attached to a
+        // tap that is already installed, so the witness just joins in rather
+        // than capture having to be torn down and rebuilt around it.
+        await startWitness()
     }
 
     /// Build the witness and start the recogniser, if the setting is on and
     /// there is a model to run. Does nothing otherwise, which is what leaves
     /// the signal exactly as it is today.
+    ///
+    /// Two callers can reach this at once — capture starting, and the model
+    /// becoming ready — and there's an `await` before the witness is stored,
+    /// so `isStartingWitness` is what stops them building two.
     private func startWitness() async {
-        guard witness == nil, confirmWithWords, witnessAvailability == .ready else { return }
+        guard !isStartingWitness, witness == nil, isMeetingActive else { return }
+        guard confirmWithWords, witnessAvailability == .ready else { return }
         guard #available(macOS 26, *), let locale = witnessLocale else { return }
+
+        isStartingWitness = true
+        defer { isStartingWitness = false }
 
         let witness = WordWitness(locale: locale)
         do {
@@ -369,21 +381,5 @@ final class AudioMonitor {
         micSource.bufferObserver = nil
         witness?.stop()
         witness = nil
-    }
-
-    /// Rebuild capture from scratch, the way the listen-to-all override does,
-    /// for a change that only takes effect when the microphone tap is
-    /// installed.
-    private func restartCapture() {
-        guard isMeetingActive else { return }
-        let wasGlobal = listenToAllAudio
-        tearDownCapture()
-        quietPolls = 0
-        if wasGlobal {
-            startCapture(for: nil)
-        } else {
-            isMeetingActive = false
-            detect()
-        }
     }
 }
