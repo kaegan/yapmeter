@@ -1,0 +1,20 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 660 400" width="660" height="400">
+  <!-- The Finder window behind the installer: Yap's cream, the strawberry
+       arrow pointing from the app (icon centred at 165,190) to the
+       Applications folder (centred at 495,190), and one line of copy. -->
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#FFFAF1"/>
+      <stop offset="1" stop-color="#FFEFDA"/>
+    </linearGradient>
+    <linearGradient id="arrow" x1="0" y1="0" x2="1" y2="0">
+      <stop offset="0" stop-color="#FF6E88"/>
+      <stop offset="1" stop-color="#FF4D6E"/>
+    </linearGradient>
+  </defs>
+  <rect width="660" height="400" fill="url(#bg)"/>
+  <path d="M258 190 H372" fill="none" stroke="url(#arrow)" stroke-width="8" stroke-linecap="round"/>
+  <path d="M356 166 L402 190 L356 214" fill="none" stroke="#FF4D6E" stroke-width="8" stroke-linecap="round" stroke-linejoin="round"/>
+  <text x="330" y="318" text-anchor="middle" font-family="-apple-system, 'SF Pro Text', 'Helvetica Neue', Helvetica, Arial, sans-serif" font-size="17" font-weight="600" fill="#4A2C2A">Drag Yapmeter into Applications</text>
+  <text x="330" y="342" text-anchor="middle" font-family="-apple-system, 'SF Pro Text', 'Helvetica Neue', Helvetica, Arial, sans-serif" font-size="13" fill="#4A2C2A" fill-opacity="0.6">Then open it from Launchpad or Spotlight.</text>
+</svg>
