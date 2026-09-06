@@ -12,6 +12,8 @@ struct TurnClock {
     /// A turn survives a pause up to this long before it's considered over.
     /// Longer than the detector's hangover on purpose: pausing for breath
     /// mid-sentence shouldn't reset the clock, but a genuine handover should.
+    /// `SignalStateMachine.nearHold` reads this value so the pet stays blue
+    /// for exactly as long as there is a count to show.
     ///
     /// A turn can only be resumed within this window if the detector feeding
     /// it releases evidence faster than the window is long - concretely,
@@ -22,10 +24,11 @@ struct TurnClock {
     var endGap: TimeInterval = 2.0
 
     /// When the current turn began, or nil if no turn is running. Once set,
-    /// this is deliberately *not* cleared the moment speech pauses - only
-    /// `update`'s return value hides it from the display while the pause is
-    /// within `endGap`. That's what lets a resumption inside the gap
-    /// reconnect to the original start without a separate "ended turn" record.
+    /// this is deliberately *not* cleared the moment speech pauses: it
+    /// survives a pause up to `endGap`, and `update` keeps returning the
+    /// count through it. That's what lets a resumption inside the gap
+    /// reconnect to the original start without a separate "ended turn"
+    /// record, and what keeps the count on screen while the pet is blue.
     private(set) var startedAt: Date?
     /// The last tick at which speech was confirmed. Compared against `now`
     /// (to decide whether the pause has become a real end) and against a new
@@ -45,12 +48,13 @@ struct TurnClock {
             let onset = speechStartedAt ?? now
             if startedAt == nil {
                 startedAt = onset
-            } else if let last = lastSpeechAt, isResumption(onset: onset, after: last) == false {
+            } else if let last = lastSpeechAt, onset.timeIntervalSince(last) > endGap {
                 // The gap since the last confirmed speech is real, and this
                 // onset falls on the far side of it: not a resumption, a new
-                // turn. (A resumption inside the gap needs nothing special
-                // here - `startedAt` was never cleared, so it's already
-                // correct.)
+                // turn. Anything closer keeps `startedAt` as it is - a
+                // resumption inside the gap was never cleared, and an onset
+                // at or before `last` is just the current turn continuing
+                // with the same back-dated onset it has reported all along.
                 startedAt = onset
             }
             lastSpeechAt = now
@@ -62,16 +66,6 @@ struct TurnClock {
         }
 
         return startedAt.map { Int(now.timeIntervalSince($0)) }
-    }
-
-    /// Whether `onset` falls close enough after `last` to count as resuming
-    /// the same turn rather than starting a new one. Guards both directions:
-    /// too far after is a real gap, and at or before `last` (which shouldn't
-    /// happen - onsets aren't retroactive past speech already confirmed, but
-    /// nothing enforces that across files) is never treated as a resumption.
-    private func isResumption(onset: Date, after last: Date) -> Bool {
-        let gap = onset.timeIntervalSince(last)
-        return gap > 0 && gap <= endGap
     }
 
     /// Forget everything. Used when the audio source goes away entirely, so
