@@ -205,6 +205,12 @@ Then each release is a tag:
 git tag v0.2.0 && git push origin v0.2.0
 ```
 
+The tag is half the job. The version shown on yapmeter.com's download button
+lives in the site repo and is bumped after the release exists; the `release`
+skill in `.claude/skills/release/` does the tag, the wait, the checks and the
+site bump in that order, so ask for a release rather than pushing a tag by
+hand.
+
 The workflow tests, archives, signs, notarizes, staples, checks the result
 against Gatekeeper, signs the archive for Sparkle, and rewrites the appcast
 from the live feed plus the new item. The marketing version comes from the tag
