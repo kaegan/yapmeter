@@ -2,7 +2,7 @@ name: Yapmeter
 options:
   bundleIdPrefix: fyi.kaegan
   deploymentTarget:
-    macOS: "14.2"
+    macOS: "26.0"
 packages:
   Sparkle:
     url: https://github.com/sparkle-project/Sparkle
@@ -46,7 +46,7 @@ targets:
         ENABLE_HARDENED_RUNTIME: YES
         ENABLE_APP_SANDBOX: NO
         CODE_SIGN_STYLE: Automatic
-        MACOSX_DEPLOYMENT_TARGET: "14.2"
+        MACOSX_DEPLOYMENT_TARGET: "26.0"
   YapmeterTests:
     type: bundle.unit-test
     platform: macOS
@@ -57,7 +57,7 @@ targets:
     settings:
       base:
         SWIFT_VERSION: "6.0"
-        MACOSX_DEPLOYMENT_TARGET: "14.2"
+        MACOSX_DEPLOYMENT_TARGET: "26.0"
         GENERATE_INFOPLIST_FILE: YES
         PRODUCT_BUNDLE_IDENTIFIER: fyi.kaegan.yapmeter.tests
         CODE_SIGN_STYLE: Automatic

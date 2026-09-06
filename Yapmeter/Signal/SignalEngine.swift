@@ -25,19 +25,6 @@ final class SignalEngine {
         }
     }
 
-    /// Whether the turn timer waits until the Mac has heard words before it
-    /// starts, so typing, music and fans don't run it. A mode rather than an
-    /// act of listening, so it persists across launches the way Sensitivity
-    /// does. Off by default (constitution clause 2).
-    var confirmWithWords: Bool {
-        didSet {
-            guard confirmWithWords != oldValue else { return }
-            UserDefaults.standard.set(confirmWithWords, forKey: Self.confirmWithWordsKey)
-            speechConfirmation.reset()
-            audioMonitor.setConfirmWithWords(confirmWithWords)
-        }
-    }
-
     let audioMonitor = AudioMonitor()
 
     private var farEndDetector: VoiceActivityDetector
@@ -48,7 +35,6 @@ final class SignalEngine {
     private var tickTimer: Timer?
 
     private static let sensitivityKey = "sensitivity"
-    private static let confirmWithWordsKey = "confirmWithWords"
     private static let logger = Logger(subsystem: "fyi.kaegan.yapmeter", category: "signal")
     private var lastLevelLogAt = Date.distantPast
     private static let tickInterval: TimeInterval = 1.0 / 50.0
@@ -57,9 +43,6 @@ final class SignalEngine {
         let stored = UserDefaults.standard.string(forKey: Self.sensitivityKey)
         let sensitivity = stored.flatMap(VoiceActivityDetector.Sensitivity.init(rawValue:)) ?? .normal
         self.sensitivity = sensitivity
-        // `bool(forKey:)` is false for a key that was never written, which is
-        // the default this setting wants.
-        self.confirmWithWords = UserDefaults.standard.bool(forKey: Self.confirmWithWordsKey)
         // The far end gets a shorter onset than the near end's default: it
         // drives the block lamp, not the turn timer, and the lamp's dwell
         // (1.2s) plus the detector's hangover (0.7s) is already close to the
@@ -67,12 +50,6 @@ final class SignalEngine {
         // ordinary mid-sentence pause on their end flash the lamp clear.
         self.farEndDetector = VoiceActivityDetector(sensitivity: sensitivity, onsetEvidence: 0.25)
         self.nearEndDetector = VoiceActivityDetector(sensitivity: sensitivity)
-        // `didSet` doesn't run during `init`, so the stored setting has to be
-        // handed over by hand. Nothing starts here: the monitor only resolves
-        // the model, and only if the setting is on.
-        if confirmWithWords {
-            audioMonitor.setConfirmWithWords(true)
-        }
     }
 
     func start() {
@@ -121,10 +98,10 @@ final class SignalEngine {
         let gate = levels.nearEnd.map { nearEndDetector.update(dBFS: $0, now: now) } ?? nearEndDetector.isSpeaking
 
         // With the witness listening, the gate's decision is a candidate the
-        // recogniser still has to back up with words; without it (the setting
-        // off, macOS 14, no model, no microphone) the gate is the decision, as
-        // it has always been. Either way the gate owns onset and release: this
-        // can only ever delay a start.
+        // recogniser still has to back up with words; without it (no model
+        // for your language, a failed download, no microphone) the gate is
+        // the decision, as it was before there was a witness. Either way the
+        // gate owns onset and release: this can only ever delay a start.
         let near: Bool
         let nearOnset: Date?
         if audioMonitor.isWitnessRunning {

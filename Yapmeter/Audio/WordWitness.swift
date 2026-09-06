@@ -3,24 +3,13 @@ import Foundation
 import Speech
 import os
 
-/// What `AudioMonitor` needs from the witness, without the macOS 26
-/// availability the real one carries. A stored property can't be version
-/// gated, so the monitor holds this and only ever builds the concrete type
-/// inside an `if #available`.
-protocol SpeechWitness: AnyObject, Sendable {
-    /// The wall-clock moment the recogniser's latest result with words covers
-    /// audio up to, or nil if it hasn't heard any this session. Only ever
-    /// moves forward. Read from the main actor on every tick.
-    var wordsHeardThrough: Date? { get }
-    func stop()
-}
-
 /// Whether on-device recognition can run on this Mac, for the menu to say so.
-/// Top level rather than nested in `WordWitness` so `AudioMonitor` can hold it
-/// on macOS 14.
+/// Anything but `.ready` means the turn timer is running on the energy gate
+/// alone, as it did before there was a witness.
 enum WordModelAvailability: Equatable, Sendable {
     case ready
-    /// macOS is fetching the model because the switch was just turned on.
+    /// macOS is fetching the model. Happens once, on the first launch on a
+    /// Mac that has no model for your language.
     case downloading
     case downloadFailed
     /// No on-device model exists for any language this Mac prefers.
@@ -39,8 +28,7 @@ enum WordModelAvailability: Equatable, Sendable {
 /// `.fastResults` is not optional. Without it volatile results arrive in
 /// batches every ~3.7 s, which is longer than the confirmation window, and
 /// nothing would ever confirm in time.
-@available(macOS 26, *)
-final class WordWitness: SpeechWitness, @unchecked Sendable {
+final class WordWitness: @unchecked Sendable {
     enum WitnessError: Error, CustomStringConvertible {
         case noCompatibleFormat
 
@@ -96,6 +84,9 @@ final class WordWitness: SpeechWitness, @unchecked Sendable {
         feed = continuation
     }
 
+    /// The wall-clock moment the recogniser's latest result with words covers
+    /// audio up to, or nil if it hasn't heard any this session. Only ever
+    /// moves forward. Read from the main actor on every tick.
     var wordsHeardThrough: Date? {
         os_unfair_lock_lock(&lock)
         defer { os_unfair_lock_unlock(&lock) }
@@ -262,9 +253,10 @@ final class WordWitness: SpeechWitness, @unchecked Sendable {
         return installed.contains { $0.identifier(.bcp47) == wanted }
     }
 
-    /// Asks macOS to fetch the on-device model. This is the second network
-    /// request the app can cause, it is macOS that makes it, and it only
-    /// happens because you turned the switch on (constitution clause 3).
+    /// Asks macOS to fetch the on-device model. This is the one network
+    /// request the app can cause besides Sparkle's, it is macOS that makes
+    /// it, and it happens once, on first launch on a Mac that has no model
+    /// for your language (constitution clause 3).
     static func install(_ locale: Locale) async throws {
         let transcriber = SpeechTranscriber(
             locale: locale,
