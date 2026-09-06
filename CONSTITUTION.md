@@ -28,12 +28,16 @@ These are not preferences. A feature that crosses one is not a Yapmeter feature.
    far end is never transcribed, under any setting.
 3. **Nothing leaves the Mac.** The app makes exactly one network request of its
    own: the Sparkle update check, which carries the app version and nothing
-   else. Turning the speech recognition switch on can cause a second, made by
-   macOS rather than by the app: if this Mac has no on-device model for your
-   language, the system is asked to fetch one, once. Neither request carries
-   anything about you or your meetings. No accounts, no login, no cloud sync,
-   no crash reporting, no analytics in the app. The website may run anonymous
-   page analytics. Downloading never requires an email address.
+   else. That check can be followed by a second request of its own, made
+   without asking: Sparkle downloading the signed release archive, which it
+   stages on disk until it installs. Turning the speech recognition switch on
+   can cause a third, made by macOS rather than by the app: if this Mac has
+   no on-device model for your language, the system is asked to fetch one,
+   once. None of the three carries anything about you or your meetings. No
+   accounts, no login, no cloud sync, no crash reporting, no analytics in the
+   app. The website may run anonymous page analytics. Downloading never
+   requires an email address. The staged update, and when it's allowed to
+   install, are covered under "Never interrupts a meeting" below.
 4. **It only listens during a call.** Capture starts when a meeting app opens
    the mic and tears down when the call ends. The app never holds the mic or
    system audio open all day. Manual listening is always on a timer or
@@ -44,7 +48,10 @@ These are not preferences. A feature that crosses one is not a Yapmeter feature.
 6. **Never interrupts a meeting.** During a call the menu bar lamp is the entire
    interface. No windows, popovers, sounds, or notifications while a meeting
    is running. Anything that needs more than a glance (the report) arrives
-   after the call ends, and can be switched off entirely.
+   after the call ends, and can be switched off entirely. A downloaded update
+   waits the same way: it never installs during a meeting, or in the minute
+   after one ends, so back-to-back calls aren't caught by a relaunch in the
+   gap between them.
 7. **A new permission, network call, or file on disk is a constitutional
    amendment.** Edit this document first, and update the README, the
    permission prompt strings, and the site's privacy section in the same

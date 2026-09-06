@@ -16,7 +16,15 @@ import AppKit
 /// `isTemplate = false` ourselves.
 @MainActor
 enum SignalHeadRenderer {
-    private static var cache: [Aspect: NSImage] = [:]
+    /// Keyed on the badge too: an unbadged and a badged image for the same
+    /// aspect are different pictures, and caching on `Aspect` alone would
+    /// have handed back whichever one was drawn first.
+    private struct CacheKey: Hashable {
+        let aspect: Aspect
+        let updateAvailable: Bool
+    }
+
+    private static var cache: [CacheKey: NSImage] = [:]
 
     /// The menu bar is 24pt; this leaves a point above and below.
     static let imageHeight: CGFloat = 22
@@ -46,9 +54,14 @@ enum SignalHeadRenderer {
         return .fresh
     }
 
-    static func menuBarImage(for aspect: Aspect, speakingSeconds: Int?) -> NSImage {
+    /// `updateAvailable` only ever shows while `aspect == .dark`: it's the
+    /// one state the lamp itself carries no meaning in, so a badge there
+    /// competes with nothing. A caller can pass it regardless of the current
+    /// aspect - normalizing here, before the cache is even consulted, means
+    /// every other aspect always resolves to the one, unbadged image.
+    static func menuBarImage(for aspect: Aspect, speakingSeconds: Int?, updateAvailable: Bool = false) -> NSImage {
         guard let speakingSeconds else {
-            return petOnlyImage(for: aspect)
+            return petOnlyImage(for: aspect, updateAvailable: updateAvailable && aspect == .dark)
         }
         return petWithTimeImage(
             for: aspect,
@@ -65,16 +78,20 @@ enum SignalHeadRenderer {
 
     // MARK: - Images
 
-    private static func petOnlyImage(for aspect: Aspect) -> NSImage {
-        if let cached = cache[aspect] { return cached }
+    private static func petOnlyImage(for aspect: Aspect, updateAvailable: Bool) -> NSImage {
+        let key = CacheKey(aspect: aspect, updateAvailable: updateAvailable)
+        if let cached = cache[key] { return cached }
         let width = horizontalPadding * 2 + glyphWidth
         let image = NSImage(size: NSSize(width: width, height: imageHeight), flipped: true) { _ in
             draw(aspect: aspect, stage: .fresh, atX: horizontalPadding)
+            if updateAvailable { drawUpdateBadge(atX: horizontalPadding) }
             return true
         }
         image.isTemplate = false
-        image.accessibilityDescription = aspect.displayName
-        cache[aspect] = image
+        image.accessibilityDescription = updateAvailable
+            ? "\(aspect.displayName), update available"
+            : aspect.displayName
+        cache[key] = image
         return image
     }
 
@@ -143,6 +160,20 @@ enum SignalHeadRenderer {
         let pen = Pen(context: context, state: PetPalette.color(for: aspect))
         drawPet(pen, phase(of: aspect), stage: stage)
         context.endTransparencyLayer()
+        context.restoreGState()
+    }
+
+    /// A plain dot at the pet's top right, in the accent colour so it reads
+    /// as "something's here" rather than another aspect colour. Sits outside
+    /// `petBody`'s circle (radius 6.5 about `petCentre`) so it never has to
+    /// contend with the sleeping pet's own outline.
+    private static func drawUpdateBadge(atX x: CGFloat) {
+        guard let context = NSGraphicsContext.current?.cgContext else { return }
+        context.saveGState()
+        context.translateBy(x: x, y: (imageHeight - glyphHeight) / 2)
+        context.scaleBy(x: glyphScale, y: glyphScale)
+        NSColor.controlAccentColor.setFill()
+        circle(13.6, 2.6, 1.4).fill()
         context.restoreGState()
     }
 

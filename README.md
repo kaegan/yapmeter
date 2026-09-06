@@ -153,10 +153,22 @@ release published. Every archive is signed with an EdDSA key that never leaves
 the release machine, and Sparkle refuses anything the key in `Info.plist`
 doesn't verify.
 
-This is the one thing the app sends off the Mac, and it sends only what an
-HTTPS request carries: the current version, in the User-Agent. No audio, no
-meeting data. Turning the automatic check off in Sparkle's dialog leaves the
-manual one working.
+An update that passes that check downloads and installs itself, with no
+window and no prompt, the next time no meeting is running (and it waits a
+minute after one ends, in case another is about to start). Yapmeter is a menu
+bar app with no Dock icon to bounce, so a check made in the background never
+tries to put a window in front of you either — the one exception is an
+update Sparkle won't install without asking (a major version, or one it
+can't verify), which shows a dot on the pet instead. **Update to
+0.3.0…**, above **Check for Updates…**, opens the same window
+**Check for Updates…** always has.
+
+This is the one thing the app sends off the Mac on its own: the version
+check, and then the signed archive itself if an update is found. Both send
+only what an HTTPS request carries — no audio, no meeting data. Turning the
+automatic check off in Sparkle's dialog leaves the manual one working, and
+turns automatic installs off with it, since neither ever runs without the
+other.
 
 ## Releasing
 
