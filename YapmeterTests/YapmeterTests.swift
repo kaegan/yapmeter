@@ -194,6 +194,147 @@ final class VoiceActivityDetectorTests: XCTestCase {
         XCTAssertFalse(low.isSpeaking)
     }
 
+    /// Speech-shaped feeding: `seconds` of a nominal level with a fixed
+    /// per-buffer jitter (the mic delivers 100ms buffers, five ticks each),
+    /// broken every `pauseEvery` seconds by a `pause` at room level. The
+    /// jitter is a deterministic LCG so the trace is the same every run.
+    private func feedMonologue(
+        _ detector: inout VoiceActivityDetector,
+        dBFS: Float,
+        jitter: Float,
+        roomDBFS: Float,
+        seconds: TimeInterval,
+        pauseEvery: TimeInterval,
+        pause: TimeInterval,
+        from start: Date,
+        onTick: (Date, VoiceActivityDetector) -> Void = { _, _ in }
+    ) -> Date {
+        let step = 1.0 / 50.0
+        var now = start
+        let end = start.addingTimeInterval(seconds)
+        var seed: UInt32 = 12345
+        var level = dBFS
+        var tick = 0
+        while now < end {
+            now = now.addingTimeInterval(step)
+            if tick % 5 == 0 {
+                seed = seed &* 1_664_525 &+ 1_013_904_223
+                let unit = Float(seed >> 8) / Float(1 << 24)
+                level = dBFS + (unit * 2 - 1) * jitter
+            }
+            let sinceStart = now.timeIntervalSince(start)
+            let inPause = sinceStart.truncatingRemainder(dividingBy: pauseEvery) >= pauseEvery - pause
+            detector.update(dBFS: inPause ? roomDBFS : level, now: now)
+            onTick(now, detector)
+            tick += 1
+        }
+        return now
+    }
+
+    /// Feed a constant level, returning when `detector.isSpeaking` first
+    /// equals `speaking`, or nil if it never does within `seconds`.
+    private func feedUntil(
+        _ detector: inout VoiceActivityDetector,
+        speaking: Bool,
+        dBFS: Float,
+        seconds: TimeInterval,
+        from start: Date
+    ) -> Date? {
+        let step = 1.0 / 50.0
+        var now = start
+        let end = start.addingTimeInterval(seconds)
+        while now < end {
+            now = now.addingTimeInterval(step)
+            detector.update(dBFS: dBFS, now: now)
+            if detector.isSpeaking == speaking { return now }
+        }
+        return nil
+    }
+
+    /// YB-47. A hum 20 dB over the room clears every onset margin, so it
+    /// confirms at first; the floor must then rise to meet it within the
+    /// window so it releases, and it must stay released.
+    func testSteadyHumReleasesWithinTheWindowAndNeverLatches() {
+        for sensitivity in VoiceActivityDetector.Sensitivity.allCases {
+            var detector = VoiceActivityDetector(sensitivity: sensitivity)
+            let start = Date(timeIntervalSince1970: 0)
+            let humStart = feed(&detector, dBFS: -60, seconds: 15, from: start)
+            let confirmed = feedUntil(&detector, speaking: true, dBFS: -40, seconds: 2, from: humStart)
+            XCTAssertNotNil(confirmed, "\(sensitivity): the hum should confirm at first")
+            guard let confirmed else { continue }
+            let released = feedUntil(&detector, speaking: false, dBFS: -40, seconds: 12, from: confirmed)
+            XCTAssertNotNil(released, "\(sensitivity): the hum latched")
+            guard let released else { continue }
+            XCTAssertLessThanOrEqual(released.timeIntervalSince(humStart), 12, "\(sensitivity)")
+            let again = feedUntil(&detector, speaking: true, dBFS: -40, seconds: 60, from: released)
+            XCTAssertNil(again, "\(sensitivity): the hum re-confirmed")
+            XCTAssertEqual(detector.noiseFloor, -40, accuracy: 1, "\(sensitivity): floor should sit on the hum")
+        }
+    }
+
+    /// YB-47. The other half of the bargain: without the freeze, a long
+    /// turn must not lift the floor into its own level and mute itself.
+    func testLongTurnWithPausesKeepsSpeakingThroughout() {
+        for sensitivity in VoiceActivityDetector.Sensitivity.allCases {
+            var detector = VoiceActivityDetector(sensitivity: sensitivity)
+            let start = Date(timeIntervalSince1970: 0)
+            let turnStart = feed(&detector, dBFS: -60, seconds: 5, from: start)
+            var confirmedStart: Date?
+            var dropouts: [Date] = []
+            _ = feedMonologue(
+                &detector, dBFS: -30, jitter: 8, roomDBFS: -60,
+                seconds: 180, pauseEvery: 4, pause: 0.4, from: turnStart
+            ) { now, detector in
+                if now.timeIntervalSince(turnStart) < 1 { return }
+                if !detector.isSpeaking { dropouts.append(now) }
+                if confirmedStart == nil { confirmedStart = detector.speechStartedAt }
+            }
+            XCTAssertTrue(dropouts.isEmpty, "\(sensitivity): dropped out at \(dropouts.prefix(3).map { $0.timeIntervalSince(turnStart) })")
+            XCTAssertNotNil(confirmedStart, "\(sensitivity)")
+            XCTAssertEqual(detector.speechStartedAt, confirmedStart, "\(sensitivity): the turn restarted")
+            XCTAssertLessThan(detector.noiseFloor, -54, "\(sensitivity): floor climbed into the speech")
+        }
+    }
+
+    /// YB-47. Once a hum is the floor, a transient over it still has to earn
+    /// `onsetEvidence`, at every sensitivity.
+    func testCoughOverAnAbsorbedHumIsRejected() {
+        for sensitivity in VoiceActivityDetector.Sensitivity.allCases {
+            var detector = VoiceActivityDetector(sensitivity: sensitivity)
+            let start = Date(timeIntervalSince1970: 0)
+            var now = feed(&detector, dBFS: -40, seconds: 30, from: start)
+            XCTAssertFalse(detector.isSpeaking, "\(sensitivity)")
+            now = feed(&detector, dBFS: -10, seconds: 0.4, from: now)
+            XCTAssertFalse(detector.isSpeaking, "\(sensitivity)")
+            _ = feed(&detector, dBFS: -40, seconds: 1, from: now)
+            XCTAssertFalse(detector.isSpeaking, "\(sensitivity)")
+        }
+    }
+
+    /// Unchanged behaviour, now asserted: when the hum stops, the floor
+    /// follows it down within a second, so the next voice is heard.
+    func testFloorFallsWithinASecondWhenTheHumStops() {
+        var detector = VoiceActivityDetector()
+        let start = Date(timeIntervalSince1970: 0)
+        var now = feed(&detector, dBFS: -40, seconds: 30, from: start)
+        XCTAssertEqual(detector.noiseFloor, -40, accuracy: 1)
+        now = feed(&detector, dBFS: -60, seconds: 1, from: now)
+        XCTAssertLessThan(detector.noiseFloor, -58)
+        _ = feed(&detector, dBFS: -25, seconds: 1, from: now)
+        XCTAssertTrue(detector.isSpeaking)
+    }
+
+    /// A stalled run loop: the ring must not keep a stale quiet slot that
+    /// should have aged out, or a hum after the stall latches again.
+    func testWindowForgetsSlotsThatAgedOutDuringAStall() {
+        var detector = VoiceActivityDetector()
+        let start = Date(timeIntervalSince1970: 0)
+        var now = feed(&detector, dBFS: -60, seconds: 15, from: start)
+        now = now.addingTimeInterval(30)
+        detector.update(dBFS: -40, now: now)
+        XCTAssertEqual(detector.windowMinimum, -40, accuracy: 0.01)
+    }
+
     func testAbsoluteGateRejectsQuietHumInASilentRoom() {
         var detector = VoiceActivityDetector()
         let start = Date(timeIntervalSince1970: 0)

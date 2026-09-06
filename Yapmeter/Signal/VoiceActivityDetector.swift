@@ -10,10 +10,14 @@ import Foundation
 ///
 /// Three mechanisms keep steady noise and transients out:
 ///
-/// - the noise floor falls fast and rises slowly, so it settles on the quiet
-///   parts of the signal and absorbs steady broadband noise (fans, aircon).
-///   It is frozen while we believe speech is present, so a long turn can't
-///   drag the floor up into its own level and mute itself;
+/// - the noise floor is the quietest half-second of the last ten seconds
+///   (minimum statistics, the standard in speech enhancement). Speech always
+///   has dips between sentences and steady noise never does, so the minimum
+///   finds the room under a talker and finds the hum under a hum. A long turn
+///   can't drag the floor up into its own level, and a steady sound raises
+///   the floor to itself within one window and stops reading as speech. The
+///   floor is never frozen: an earlier version froze it while speech was
+///   present, which made any latch permanent (YB-47);
 /// - loudness above `onsetMargin` has to accumulate for `onsetEvidence`
 ///   seconds before it counts as speech, which rejects transients (a cough,
 ///   a door, a mug on a desk) regardless of how loud they are. The evidence
@@ -80,7 +84,14 @@ struct VoiceActivityDetector {
     var absoluteGate: Float
 
     private(set) var isSpeaking = false
+    /// The room's level: `windowMinimum` smoothed so it moves rather than
+    /// steps, and clamped into `floorRange`.
     private(set) var noiseFloor: Float
+    /// The quietest level seen in any half-second slot of the last ten
+    /// seconds, before smoothing. Exposed read-only for the debug log: when
+    /// the floor sits somewhere surprising, this says whether the window
+    /// found a dip or the room really is that loud.
+    private(set) var windowMinimum: Float
     /// When the detector last confirmed speech, this is when the sound that
     /// earned that confirmation actually started - not the (later) moment
     /// enough evidence had accumulated to believe it. Nil whenever
@@ -111,9 +122,29 @@ struct VoiceActivityDetector {
     private var belowSince: Date?
     private var lastUpdate: Date?
 
-    /// Time constants for the noise floor tracker, in seconds.
+    /// The minimum-statistics window: the last `slotCount` slots of
+    /// `slotLength` seconds each, as a ring indexed by absolute slot number.
+    /// Ten seconds is longer than a talker goes without a pause between
+    /// sentences, so the window always holds a dip during a turn, and short
+    /// enough that a new steady noise is absorbed before the release margin
+    /// has time to matter. An empty slot holds `.infinity` and never wins
+    /// the minimum.
+    private let slotLength: TimeInterval = 0.5
+    private let slotCount = 20
+    private var slotMinimums: [Float]
+    /// Absolute number (seconds since 1970 divided by `slotLength`) of the
+    /// slot the last sample landed in, so a stalled run loop or a wake from
+    /// sleep clears every slot that aged out in between instead of leaving
+    /// stale minimums in the ring.
+    private var currentSlot: Int64?
+
+    /// Time constants for smoothing the window minimum into the floor, in
+    /// seconds. Falling is fast so a room that goes quiet is found at once;
+    /// rising is only a little slower, enough to round the half-second steps
+    /// off. The old slow rise is no longer needed, the window itself is what
+    /// keeps speech from lifting the floor.
     private let fallTau: TimeInterval = 0.2
-    private let riseTau: TimeInterval = 8.0
+    private let riseTau: TimeInterval = 0.5
     /// The floor is clamped into this range: below it there is nothing to
     /// measure, above it we'd be treating speech as background.
     private let floorRange: ClosedRange<Float> = (-75)...(-30)
@@ -131,12 +162,14 @@ struct VoiceActivityDetector {
         self.evidenceCap = onsetEvidence * 2
         self.hangover = hangover
         self.absoluteGate = absoluteGate
-        // Start pessimistic, at the top of the range. The tracker falls fast
-        // and rises slowly, so a quiet room is found within about a second,
-        // whereas starting at the bottom means several seconds during which
-        // the floor is still climbing and any steady noise clears the margin
-        // and latches on. Assume noisy until the room proves otherwise.
+        // Start pessimistic, at the top of the range. The floor falls fast,
+        // so a quiet room is found within about a second, whereas starting
+        // at the bottom means a stretch during which any steady noise clears
+        // the margin and latches on. Assume noisy until the room proves
+        // otherwise.
         self.noiseFloor = floorRange.upperBound
+        self.windowMinimum = floorRange.upperBound
+        self.slotMinimums = Array(repeating: .infinity, count: slotCount)
     }
 
     mutating func apply(sensitivity: Sensitivity) {
@@ -151,7 +184,7 @@ struct VoiceActivityDetector {
         let elapsed = lastUpdate.map { now.timeIntervalSince($0) } ?? 0
         lastUpdate = now
 
-        trackNoiseFloor(dBFS: dBFS, elapsed: elapsed)
+        trackNoiseFloor(dBFS: dBFS, now: now, elapsed: elapsed)
 
         let margin = isSpeaking ? releaseMargin : onsetMargin
         let isLoud = dBFS > absoluteGate && dBFS > noiseFloor + margin
@@ -191,18 +224,41 @@ struct VoiceActivityDetector {
         belowSince = nil
         lastUpdate = nil
         noiseFloor = floorRange.upperBound
+        windowMinimum = floorRange.upperBound
+        slotMinimums = Array(repeating: .infinity, count: slotCount)
+        currentSlot = nil
     }
 
-    /// Exponential tracker with asymmetric time constants: quick to follow the
-    /// signal down to a new quiet baseline, slow to follow it up. Frozen while
-    /// speech is present so a long turn can't raise the floor to its own level.
-    private mutating func trackNoiseFloor(dBFS: Float, elapsed: TimeInterval) {
+    /// Record the sample in its slot, take the minimum across the window, and
+    /// smooth that into the floor with asymmetric time constants.
+    private mutating func trackNoiseFloor(dBFS: Float, now: Date, elapsed: TimeInterval) {
+        let slot = Int64((now.timeIntervalSince1970 / slotLength).rounded(.down))
+        if let current = currentSlot, slot > current {
+            // Every slot between the last sample and this one has aged out.
+            // Past a full window there is nothing left to keep.
+            let advanced = min(Int(clamping: slot - current), slotCount)
+            for step in 1...advanced {
+                slotMinimums[ringIndex(current + Int64(step))] = .infinity
+            }
+        }
+        currentSlot = slot
+        let index = ringIndex(slot)
+        slotMinimums[index] = min(slotMinimums[index], dBFS)
+        windowMinimum = clamp(slotMinimums.min() ?? dBFS)
+
         guard elapsed > 0 else { return }
-        let falling = dBFS < noiseFloor
-        if isSpeaking && !falling { return }
+        let falling = windowMinimum < noiseFloor
         let tau = falling ? fallTau : riseTau
         let alpha = Float(1 - exp(-elapsed / tau))
-        noiseFloor += (dBFS - noiseFloor) * alpha
-        noiseFloor = min(max(noiseFloor, floorRange.lowerBound), floorRange.upperBound)
+        noiseFloor = clamp(noiseFloor + (windowMinimum - noiseFloor) * alpha)
+    }
+
+    private func ringIndex(_ slot: Int64) -> Int {
+        let remainder = Int(slot % Int64(slotCount))
+        return remainder < 0 ? remainder + slotCount : remainder
+    }
+
+    private func clamp(_ level: Float) -> Float {
+        min(max(level, floorRange.lowerBound), floorRange.upperBound)
     }
 }

@@ -115,7 +115,7 @@ final class SignalEngine {
         let nearText = levels.nearEnd.map { String(format: "%.1f", $0) } ?? "none"
         let farText = levels.farEnd.map { String(format: "%.1f", $0) } ?? "none"
         Self.logger.debug(
-            "near \(nearText, privacy: .public) dBFS floor \(self.nearEndDetector.noiseFloor, format: .fixed(precision: 1), privacy: .public) evidence \(self.nearEndDetector.evidence, format: .fixed(precision: 2), privacy: .public) speaking \(near, privacy: .public) | far \(farText, privacy: .public) dBFS floor \(self.farEndDetector.noiseFloor, format: .fixed(precision: 1), privacy: .public) speaking \(far, privacy: .public)"
+            "near \(nearText, privacy: .public) dBFS floor \(self.nearEndDetector.noiseFloor, format: .fixed(precision: 1), privacy: .public) min \(self.nearEndDetector.windowMinimum, format: .fixed(precision: 1), privacy: .public) evidence \(self.nearEndDetector.evidence, format: .fixed(precision: 2), privacy: .public) speaking \(near, privacy: .public) | far \(farText, privacy: .public) dBFS floor \(self.farEndDetector.noiseFloor, format: .fixed(precision: 1), privacy: .public) min \(self.farEndDetector.windowMinimum, format: .fixed(precision: 1), privacy: .public) speaking \(far, privacy: .public)"
         )
     }
 

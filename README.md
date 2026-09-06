@@ -56,9 +56,13 @@ relaunches.
 
 There's no fixed dB threshold: rooms vary by tens of dB, so anything low enough
 to catch quiet speech in a silent room latches on permanently in a loud one.
-Instead the detector tracks the room's own noise floor (fast to fall, slow to
-rise) and looks for energy a margin above it. Loudness above that margin has
-to accumulate for about 600ms before it counts as speech — long enough that a
+Instead the detector takes the room's noise floor to be the quietest
+half-second of the last ten seconds and looks for energy a margin above it.
+Speech always has dips between sentences and steady noise never does, so the
+floor finds the room under a talker and finds the hum under a hum: a long turn
+can't raise the floor into its own level, and a fan that starts mid-call is
+absorbed within about ten seconds. Loudness above that margin has to
+accumulate for about 600ms before it counts as speech — long enough that a
 cough or a keyboard click never confirms, even though each is loud on its own
 — and once confirmed, the turn timer is back-dated to when the sound actually
 started rather than when the app finished convincing itself. Speech keeps
@@ -67,9 +71,8 @@ instead of resetting at the first quiet moment, and holds for 700ms of
 silence after release so it doesn't flicker between words. The mic buffer is
 also sliced into 10ms pieces and measured by its median rather than its
 average, so a single loud keystroke inside an otherwise quiet buffer doesn't
-read as sustained sound. Steady noise — fans, aircon — raises the floor and
-gets absorbed. The menu's **Sensitivity** setting moves that margin for rooms
-the default doesn't suit.
+read as sustained sound. The menu's **Sensitivity** setting moves that margin
+for rooms the default doesn't suit.
 
 One known limitation: macOS exposes no per-app mute state, so if you're muted
 in Zoom and talking anyway, the turn timer still runs.
