@@ -16,9 +16,10 @@ colour (a hand over the mouth while they talk, a smile when they've
 finished, a yapping mouth that wears out over a long turn), and when there's
 no meeting he sleeps in the menu bar's own label colour, like the icons
 around him. Clicking him opens a standard menu: a status line saying what
-the app is doing ("Waiting for a meeting", "Listening to Zoom"), then a
-**Sensitivity** submenu, a **Listen to All Audio** submenu, **Launch at
-Login**, a **Developer** submenu, and Quit.
+the app is doing ("Waiting for a meeting", "Listening to Zoom"), a second
+line only when the speech model is missing (downloading, failed, or none for
+your language), then a **Sensitivity** submenu, a **Listen to All Audio**
+submenu, **Launch at Login**, a **Developer** submenu, and Quit.
 
 The Developer submenu holds **Preview states**, which walks the pet through
 the whole sequence, clock included, so a change to his drawing can be judged
@@ -27,11 +28,12 @@ starts.
 
 It taps the *output* audio of your meeting app (Zoom, Chrome/Meet, Slack
 huddles) with a CoreAudio process tap for the far end, and the microphone for
-you, runs a voice activity detector over each, and drives a small state
-machine. Nothing is recorded and nothing leaves your Mac. The far end is only
-ever speech-shaped energy; your own microphone also goes through Apple's
-on-device speech recognition, which answers one yes/no question and keeps no
-text — see [Telling your voice from your keyboard](#telling-your-voice-from-your-keyboard).
+you, and drives a small state machine from the two. Nothing is recorded and
+nothing leaves your Mac. The far end is only ever speech-shaped energy. Your
+own microphone is judged by words: Apple's on-device speech recognition has to
+hear you say something before the turn timer starts, so typing, music and a
+fan never run it. It keeps no text. See [How it decides you're
+speaking](#how-it-decides-youre-speaking).
 
 ## Constitution
 
@@ -54,66 +56,60 @@ mic, for 15, 30, 45 or 60 minutes, or until you switch it off. Music or a
 video will drive the signal too while it's on, and it resets when the app
 relaunches.
 
-## Voice detection and noise
+## How it decides you're speaking
 
-There's no fixed dB threshold: rooms vary by tens of dB, so anything low enough
-to catch quiet speech in a silent room latches on permanently in a loud one.
-Instead the detector tracks the room's own noise floor (fast to fall, slow to
-rise, and always toward the quietest moment of the last two seconds, so a
-dryer that starts mid-call is absorbed within seconds while your own long
-turn, which has gaps between words, is not) and looks for energy a margin
-above it. Loudness above that margin has
-to accumulate for about 600ms before it counts as speech — long enough that a
-cough or a keyboard click never confirms, even though each is loud on its own
-— and once confirmed, the turn timer is back-dated to when the sound actually
-started rather than when the app finished convincing itself. Speech keeps
-building that evidence through brief gaps (between words, between syllables)
-instead of resetting at the first quiet moment, and holds for 700ms of
-silence after release so it doesn't flicker between words. The mic buffer is
-also sliced into 10ms pieces and measured by its median rather than its
-average, so a single loud keystroke inside an otherwise quiet buffer doesn't
-read as sustained sound. Steady noise — fans, aircon — raises the floor and
-gets absorbed. The menu's **Sensitivity** setting moves that margin for rooms
-the default doesn't suit.
+Three things happen in order: the app notices a meeting (above), an energy
+gate finds the start and end of speech on each side, and words heard on your
+microphone are what actually turn the lamp blue.
 
-One known limitation: macOS exposes no per-app mute state, so if you're muted
-in Zoom and talking anyway, the turn timer still runs.
+**The energy gate.** There's no fixed dB threshold: rooms vary by tens of dB,
+so anything low enough to catch quiet speech in a silent room latches on
+permanently in a loud one. Instead the detector tracks the room's own noise
+floor (fast to fall, slow to rise, always toward the quietest moment of the
+last two seconds, so a dryer that starts mid-call is absorbed within seconds
+while your own long turn, which has gaps between words, is not) and looks for
+energy a margin above it. That energy has to accumulate for about 600ms before
+it counts, so a cough or a keyboard click never fires the gate on its own, and
+it keeps building through the brief gaps between words instead of resetting at
+the first quiet moment. Once fired, the gate holds for 700ms of silence so it
+doesn't flicker between words. The mic buffer is sliced into 10ms pieces and
+measured by its median rather than its average, so one loud keystroke inside a
+quiet buffer doesn't read as sustained sound. Steady noise (fans, aircon)
+raises the floor and gets absorbed. The menu's **Sensitivity** setting moves
+the margin for rooms the default doesn't suit. The gate is the whole story for
+the far end: it decides when the block is occupied and when it clears.
 
-## Telling your voice from your keyboard
-
-Speech-shaped energy isn't specific enough at a desk. Measured on 2026-09-05 at
-realistic levels, the detector called fast typing speech for 70-80% of a burst,
-background music for a whole clip, and a fan for 21 of 25 seconds while the
-noise floor caught up — so the turn timer ran while you typed notes on a call.
-Apple's on-device recogniser, fed the same audio, produced no words at all on
-any of them.
-
-So words are the precondition for the lamp turning blue, on every Mac that
-runs the app, with no setting to find. The energy
-gate runs exactly as before and still owns the onset and the release; when it
-fires, that's a *candidate*, and nothing shows yet. The lamp turns blue the
-moment the recogniser has heard words covering that candidate's audio, and the
-turn is back-dated to the gate's onset, so no seconds are lost — the timer
-simply appears at 0:02 instead of 0:01. If no words arrive within three
-seconds, the candidate is discarded and the lamp never changed. Noise produces
-no words, so noise never produces blue.
+**Words on your mic.** Speech-shaped energy isn't specific enough at a desk:
+fast typing, background music and a fan all look like speech to the gate.
+Words don't. So on your side the gate's decision is only a *candidate*, and
+nothing shows yet. The lamp turns blue the moment Apple's on-device recogniser
+has heard words covering that candidate's audio, and the turn is back-dated to
+the gate's onset, so no seconds are lost; the timer simply appears at 0:02
+instead of 0:01. If no words arrive within three seconds the candidate is
+discarded and the lamp never changed. The gate still owns the release: the
+turn ends when the sound stops, not when the words do. This is how the app
+works on every Mac that runs it, with no setting to find.
 
 What the app takes from recognition is one fact: *there were words, covering
 audio up to this moment*. The text is never read, logged, or stored, the 1 Hz
-debug log stays word-free, and only your microphone is ever fed to it — the far
-end is never transcribed under any setting (constitution boundary 2). The
-recogniser runs only while a call is running, and is dropped when the call
-ends. If your Mac has no on-device model for your language, the app asks macOS
-to fetch one on first launch, which is the only network request the app can
-cause besides the update check. If that download fails, or your language has no
-model at all, the menu says so in a line under the status and the timer runs on
-the energy gate alone.
+debug log stays word-free, and only your microphone is ever fed to it. The
+far end is never transcribed (constitution boundary 2). The recogniser runs
+only while a call is running and is dropped when the call ends.
 
-Known gaps, in the app's own spirit of saying what it can't see: another person
-talking in the room confirms a candidate as readily as you do, and so does the
-far end leaking from your speakers into the mic (headphones remain the answer).
-If you talk and then keep typing, the gate owns the release, so the turn ends
-when the typing stops rather than when the words did.
+**Without a model, or without a mic.** If your Mac has no on-device model for
+your language, the app asks macOS to fetch one on first launch, which is the
+only network request the app can cause besides the update check. If that
+download fails, or your language has no model at all, the menu says so in a
+line under the status and the timer runs on the energy gate alone. Refusing
+the microphone permission leaves the far-end signal working and turns the
+timer off.
+
+**Known gaps**, in the app's own spirit of saying what it can't see: another
+person talking in the room confirms a candidate as readily as you do, and so
+does the far end leaking from your speakers into the mic (headphones remain
+the answer). If you talk and then keep typing, the turn ends when the typing
+stops rather than when the words did. And macOS exposes no per-app mute
+state, so if you're muted in Zoom and talking anyway, the timer still runs.
 
 ## Requirements
 
@@ -230,9 +226,3 @@ The code is [MIT](LICENSE). "Yapmeter", the app icon, and Yap's likeness
 aren't part of that licence; a fork needs its own name and its own pet.
 Sparkle is MIT too, and its notice ships with the app as
 [Acknowledgements.txt](Yapmeter/Acknowledgements.txt).
-
-## Status
-
-Milestone 3: automatic meeting detection, voice activity detection on both
-ends, the signal state machine, and the turn timer. The dwell time before the
-block reads clear is fixed at 1.2s; learning it per-conversation is next.
