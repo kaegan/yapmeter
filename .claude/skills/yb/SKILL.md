@@ -65,9 +65,21 @@ colours match the `Type` select options. Pass the URL as `icon` on
 | Idea    | `https://www.notion.so/icons/light-bulb_yellow.svg` |
 | Chore   | `https://www.notion.so/icons/wrench_gray.svg`     |
 
-The Notion templates (one per Type) carry the icon and preset the Type, so
-a ticket Kaegan makes from one needs no icon step. One made without a
-template gets its icon the next time a session touches it.
+When a session creates a ticket, it creates it from the Notion template for
+its Type with `template_id` on `notion-create-pages`, then sets the other
+properties. The template carries the icon, the Type, `Source` = Kaegan and
+the body sections; override `Source` to Claude when the idea is yours.
+
+| Type    | Template ID                        |
+|---------|------------------------------------|
+| Bug     | `3d392e452f1380bca37ee4dc66697c1d` |
+| Epic    | `3d392e452f138067ae44fc94edb33b61` |
+| Feature | `3d292e452f13808ba075f1bc5d6e11c1` |
+| Idea    | `3d392e452f138073ac15e87cb04f7076` |
+| Chore   | `3d392e452f1380688f9bec3cfffb684b` |
+
+A ticket Kaegan makes from a template needs no icon step. One made without
+a template gets its icon the next time a session touches it.
 
 Status values, in order: `Idea`, `Next Up`, `Planning`, `Building`,
 `Reviewing`, `Done`, `Not doing`. Never hand-edit the `GitHub` relation;
