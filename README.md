@@ -212,6 +212,13 @@ person reading the update dialog. Unlabelled PRs (tooling, CI, docs) are left
 out, and a release with nothing labelled says "Small fixes and improvements".
 The same notes are the GitHub release body and the appcast entry.
 
+## Licence
+
+The code is [MIT](LICENSE). "Yapmeter", the app icon, and Yap's likeness
+aren't part of that licence; a fork needs its own name and its own pet.
+Sparkle is MIT too, and its notice ships with the app as
+[Acknowledgements.txt](Yapmeter/Acknowledgements.txt).
+
 ## Status
 
 Milestone 3: automatic meeting detection, voice activity detection on both
