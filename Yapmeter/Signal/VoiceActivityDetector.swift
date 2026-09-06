@@ -12,8 +12,12 @@ import Foundation
 ///
 /// - the noise floor falls fast and rises slowly, so it settles on the quiet
 ///   parts of the signal and absorbs steady broadband noise (fans, aircon).
-///   It is frozen while we believe speech is present, so a long turn can't
-///   drag the floor up into its own level and mute itself;
+///   It follows the quietest level of the last couple of seconds rather
+///   than the current one, whether or not speech is present: speech has
+///   gaps between words that hold that minimum at the room level, so a
+///   long turn can't drag the floor up into its own level and mute itself,
+///   while a steady noise has no gaps, so the floor climbs to meet it and
+///   the detector lets go;
 /// - loudness above `onsetMargin` has to accumulate for `onsetEvidence`
 ///   seconds before it counts as speech, which rejects transients (a cough,
 ///   a door, a mug on a desk) regardless of how loud they are. The evidence
@@ -114,6 +118,18 @@ struct VoiceActivityDetector {
     /// Time constants for the noise floor tracker, in seconds.
     private let fallTau: TimeInterval = 0.2
     private let riseTau: TimeInterval = 8.0
+    /// How far back the floor tracker looks for the quietest level. Long
+    /// enough that ordinary speech always has an inter-word gap inside it,
+    /// short enough that a noise which starts mid-call is absorbed within
+    /// seconds: the floor rises toward a 20 dB step in about 12 s (2 s for
+    /// the old quiet to leave the window, then 8 s of `riseTau` to cover
+    /// enough of the gap to release). Speech with no 100 ms dip at all for
+    /// this long plus about 14 s would start to mute itself; nobody talks
+    /// that long without a breath.
+    private let floorWindow: TimeInterval = 2.0
+    /// Levels seen inside `floorWindow`, oldest first. Bounded by the tick
+    /// rate: about a hundred entries at 50 Hz.
+    private var recentLevels: [(at: Date, dBFS: Float)] = []
     /// The floor is clamped into this range: below it there is nothing to
     /// measure, above it we'd be treating speech as background.
     private let floorRange: ClosedRange<Float> = (-75)...(-30)
@@ -151,7 +167,11 @@ struct VoiceActivityDetector {
         let elapsed = lastUpdate.map { now.timeIntervalSince($0) } ?? 0
         lastUpdate = now
 
-        trackNoiseFloor(dBFS: dBFS, elapsed: elapsed)
+        recentLevels.append((at: now, dBFS: dBFS))
+        while let oldest = recentLevels.first, now.timeIntervalSince(oldest.at) > floorWindow {
+            recentLevels.removeFirst()
+        }
+        trackNoiseFloor(elapsed: elapsed)
 
         let margin = isSpeaking ? releaseMargin : onsetMargin
         let isLoud = dBFS > absoluteGate && dBFS > noiseFloor + margin
@@ -190,19 +210,30 @@ struct VoiceActivityDetector {
         candidateStartedAt = nil
         belowSince = nil
         lastUpdate = nil
+        recentLevels.removeAll()
         noiseFloor = floorRange.upperBound
     }
 
     /// Exponential tracker with asymmetric time constants: quick to follow the
-    /// signal down to a new quiet baseline, slow to follow it up. Frozen while
-    /// speech is present so a long turn can't raise the floor to its own level.
-    private mutating func trackNoiseFloor(dBFS: Float, elapsed: TimeInterval) {
-        guard elapsed > 0 else { return }
-        let falling = dBFS < noiseFloor
-        if isSpeaking && !falling { return }
+    /// signal down to a new quiet baseline, slow to follow it up. The target
+    /// is the quietest level inside `floorWindow`, not the latest one, and
+    /// the tracker runs whether or not speech is present.
+    ///
+    /// This used to freeze while speaking so a long turn couldn't raise the
+    /// floor to its own level. Freezing had a failure with no way out: if
+    /// the floor was wrong-low at the moment speech confirmed (the mic's
+    /// zero-filled startup buffers, or a dryer starting after the room had
+    /// been quiet), it stayed wrong, and release - which is measured against
+    /// the floor - could never happen (YB-50). Tracking the window minimum
+    /// gives the same protection for real speech, which always dips to the
+    /// room level between words, while letting a floor that is simply wrong
+    /// correct itself.
+    private mutating func trackNoiseFloor(elapsed: TimeInterval) {
+        guard elapsed > 0, let target = recentLevels.lazy.map(\.dBFS).min() else { return }
+        let falling = target < noiseFloor
         let tau = falling ? fallTau : riseTau
         let alpha = Float(1 - exp(-elapsed / tau))
-        noiseFloor += (dBFS - noiseFloor) * alpha
+        noiseFloor += (target - noiseFloor) * alpha
         noiseFloor = min(max(noiseFloor, floorRange.lowerBound), floorRange.upperBound)
     }
 }
