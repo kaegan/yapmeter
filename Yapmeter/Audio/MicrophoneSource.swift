@@ -27,6 +27,14 @@ final class MicrophoneSource: @unchecked Sendable {
 
     let levelMeter = LevelMeter()
 
+    /// Handed each buffer after its level has been measured, for anything that
+    /// needs the audio itself rather than a number — today only the word
+    /// witness. Read once when the tap is installed, so it must be set before
+    /// `start()`; changing it mid-capture does nothing until the next start.
+    /// Only the near end ever has one: the far end is never transcribed
+    /// (constitution clause 2).
+    var bufferObserver: (@Sendable (AVAudioPCMBuffer) -> Void)?
+
     private let engine = AVAudioEngine()
     private(set) var isRunning = false
 
@@ -59,8 +67,10 @@ final class MicrophoneSource: @unchecked Sendable {
         // size `LevelAnalysis.sustainedDBFS` uses to tell a keystroke click
         // apart from sustained speech. See `processBuffer` below.
         let sliceLength = max(1, Int(format.sampleRate / 100))
+        let observer = bufferObserver
         input.installTap(onBus: 0, bufferSize: 1024, format: format) { buffer, _ in
             MicrophoneSource.processBuffer(buffer, sliceLength: sliceLength, into: meter)
+            observer?(buffer)
         }
         engine.prepare()
         do {

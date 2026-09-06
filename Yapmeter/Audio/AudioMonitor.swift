@@ -26,10 +26,35 @@ final class AudioMonitor {
         /// `LevelMeter.hasReceivedAudio`.
         let farEnd: Float?
         let nearEnd: Float?
+        /// The moment the word witness's latest result with words covers your
+        /// microphone audio up to, or nil when it isn't running or hasn't
+        /// heard any. Never a word, only a time.
+        let nearEndWordsThrough: Date?
     }
 
     private(set) var status: Status = .waitingForMeeting
     private(set) var isMeetingActive = false
+
+    /// Whether the turn timer waits for on-device recognition to hear words
+    /// before it starts. `SignalEngine` owns the setting and persists it; this
+    /// is the copy capture reads. Off by default (constitution clause 2).
+    private(set) var confirmWithWords = false
+    /// What the menu says about the on-device model. Meaningless while
+    /// `confirmWithWords` is off.
+    private(set) var witnessAvailability: WordModelAvailability = .ready
+
+    /// Whether a witness is actually listening. The engine only holds the
+    /// gate's decision back when this is true, so an unsupported language, a
+    /// failed download or a refused microphone all fall back to today's
+    /// behaviour rather than to a timer that never starts.
+    var isWitnessRunning: Bool { witness != nil }
+
+    /// The recogniser arrived in macOS 26; below it the menu doesn't show the
+    /// switch at all.
+    static var supportsWordConfirmation: Bool {
+        if #available(macOS 26, *) { return true }
+        return false
+    }
 
     /// Treat the Mac as being in a call regardless of what detection says,
     /// tapping all system audio instead of one app's. For calls in apps we
@@ -78,6 +103,14 @@ final class AudioMonitor {
     private var quietPolls = 0
     private var isStarting = false
 
+    /// Held as the protocol, not the concrete type: a stored property can't
+    /// carry the macOS 26 availability the witness does.
+    private var witness: (any SpeechWitness)?
+    /// The language the model was found or fetched for, resolved once when the
+    /// switch is turned on.
+    private var witnessLocale: Locale?
+    private var modelTask: Task<Void, Never>?
+
     /// How often we ask CoreAudio which meeting processes are live.
     private let detectInterval: TimeInterval = 2
     /// Consecutive negative polls before we call the meeting over. Zoom drops
@@ -104,9 +137,14 @@ final class AudioMonitor {
         tearDownCapture()
     }
 
-    /// Peak level on each end since the last call, for the voice detectors.
+    /// Peak level on each end since the last call, for the voice detectors,
+    /// plus how far the witness has heard words into your own audio.
     func sampleLevels() -> Levels {
-        Levels(farEnd: level(from: tapSource.levelMeter), nearEnd: level(from: micSource.levelMeter))
+        Levels(
+            farEnd: level(from: tapSource.levelMeter),
+            nearEnd: level(from: micSource.levelMeter),
+            nearEndWordsThrough: witness?.wordsHeardThrough
+        )
     }
 
     private func level(from meter: LevelMeter) -> Float? {
@@ -208,6 +246,12 @@ final class AudioMonitor {
                 return
             }
 
+            // Before the microphone, not after: the tap captures the buffer
+            // observer when it's installed, so the witness has to exist first.
+            // It also means the recogniser is warm before anyone speaks, which
+            // is what keeps the first turn of a call from missing its window.
+            await self.startWitness()
+
             let micGranted = await MicrophoneSource.requestAccess()
             var micFailure: String?
             if micGranted {
@@ -238,6 +282,108 @@ final class AudioMonitor {
     private func tearDownCapture() {
         tapSource.stop()
         micSource.stop()
+        stopWitness()
         status = .waitingForMeeting
+    }
+
+    // MARK: - Words
+
+    /// Turn the word confirmation on or off. Turning it on resolves the
+    /// language and asks macOS for the model if this Mac doesn't have it;
+    /// turning it off drops the witness immediately.
+    func setConfirmWithWords(_ on: Bool) {
+        guard confirmWithWords != on else { return }
+        confirmWithWords = on
+        modelTask?.cancel()
+        modelTask = nil
+
+        guard on else {
+            witnessAvailability = .ready
+            stopWitness()
+            return
+        }
+        modelTask = Task { [weak self] in
+            await self?.prepareModel()
+        }
+    }
+
+    /// Find a language with an on-device model, downloading one if needed.
+    private func prepareModel() async {
+        guard #available(macOS 26, *) else {
+            witnessAvailability = .unsupported
+            return
+        }
+        guard let locale = await WordWitness.supportedLocale() else {
+            Self.logger.error("No on-device speech model for any preferred language")
+            witnessAvailability = .unsupported
+            return
+        }
+        witnessLocale = locale
+
+        if await WordWitness.isInstalled(locale) {
+            witnessAvailability = .ready
+        } else {
+            witnessAvailability = .downloading
+            do {
+                try await WordWitness.install(locale)
+                witnessAvailability = .ready
+            } catch {
+                Self.logger.error("Speech model download failed: \(String(describing: error), privacy: .public)")
+                witnessAvailability = .downloadFailed
+                return
+            }
+        }
+
+        guard !Task.isCancelled, confirmWithWords else { return }
+        // Capture that is already running has a microphone tap with no
+        // observer on it, and a tap can't be given one after the fact.
+        restartCapture()
+    }
+
+    /// Build the witness and start the recogniser, if the setting is on and
+    /// there is a model to run. Does nothing otherwise, which is what leaves
+    /// the signal exactly as it is today.
+    private func startWitness() async {
+        guard witness == nil, confirmWithWords, witnessAvailability == .ready else { return }
+        guard #available(macOS 26, *), let locale = witnessLocale else { return }
+
+        let witness = WordWitness(locale: locale)
+        do {
+            try await witness.start()
+        } catch {
+            Self.logger.error("Word witness failed to start: \(String(describing: error), privacy: .public)")
+            return
+        }
+        guard isMeetingActive, confirmWithWords else {
+            witness.stop()
+            return
+        }
+        self.witness = witness
+        micSource.bufferObserver = { [weak witness] buffer in
+            witness?.receive(buffer)
+        }
+    }
+
+    /// Nothing is held between calls.
+    private func stopWitness() {
+        micSource.bufferObserver = nil
+        witness?.stop()
+        witness = nil
+    }
+
+    /// Rebuild capture from scratch, the way the listen-to-all override does,
+    /// for a change that only takes effect when the microphone tap is
+    /// installed.
+    private func restartCapture() {
+        guard isMeetingActive else { return }
+        let wasGlobal = listenToAllAudio
+        tearDownCapture()
+        quietPolls = 0
+        if wasGlobal {
+            startCapture(for: nil)
+        } else {
+            isMeetingActive = false
+            detect()
+        }
     }
 }
