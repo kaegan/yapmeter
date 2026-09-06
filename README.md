@@ -57,7 +57,10 @@ relaunches.
 There's no fixed dB threshold: rooms vary by tens of dB, so anything low enough
 to catch quiet speech in a silent room latches on permanently in a loud one.
 Instead the detector tracks the room's own noise floor (fast to fall, slow to
-rise) and looks for energy a margin above it. Loudness above that margin has
+rise, and always toward the quietest moment of the last two seconds, so a
+dryer that starts mid-call is absorbed within seconds while your own long
+turn, which has gaps between words, is not) and looks for energy a margin
+above it. Loudness above that margin has
 to accumulate for about 600ms before it counts as speech — long enough that a
 cough or a keyboard click never confirms, even though each is loud on its own
 — and once confirmed, the turn timer is back-dated to when the sound actually

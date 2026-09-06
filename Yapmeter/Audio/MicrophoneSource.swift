@@ -113,6 +113,17 @@ final class MicrophoneSource: @unchecked Sendable {
             let samples = UnsafeBufferPointer(start: channels[channel], count: frameCount)
             loudest = max(loudest, LevelAnalysis.sustainedDBFS(samples, sliceLength: sliceLength))
         }
+        // The first buffer or two after `engine.start()` are partly
+        // zero-filled: the engine hands over frames the device hasn't
+        // produced yet. Their median sits at -100 dBFS or lower, which no
+        // microphone in a room ever reads (self-noise alone is well above
+        // -90). Reporting one lets the detector's noise floor collapse to
+        // it in a few hundred milliseconds, after which ordinary room noise
+        // reads as speech and, in a room that never goes quiet, stays that
+        // way for the session (YB-50). Dropping it here means
+        // `LevelMeter.hasReceivedAudio` flips on the first real buffer,
+        // which is what it was meant to wait for.
+        guard loudest > LevelMeter.silence else { return }
         meter.update(dBFS: loudest)
     }
 }

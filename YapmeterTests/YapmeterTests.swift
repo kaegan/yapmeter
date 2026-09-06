@@ -214,9 +214,61 @@ final class VoiceActivityDetectorTests: XCTestCase {
         let start = Date(timeIntervalSince1970: 0)
         var now = feed(&detector, dBFS: -65, seconds: 5, from: start)
         XCTAssertFalse(detector.isSpeaking)
-        now = feed(&detector, dBFS: -45, seconds: 60, from: now)
-        XCTAssertFalse(detector.isSpeaking, "a minute of constant -45 dBFS is a fan, not a voice")
+        now = feed(&detector, dBFS: -45, seconds: 15, from: now)
+        XCTAssertFalse(detector.isSpeaking, "fifteen seconds of constant -45 dBFS is a fan, not a voice")
+        now = feed(&detector, dBFS: -45, seconds: 15, from: now)
+        XCTAssertFalse(detector.isSpeaking)
         XCTAssertGreaterThan(detector.noiseFloor, -50, "the floor should have risen to meet the new steady level")
+    }
+
+    /// The reason the floor used to freeze during speech: a long turn must
+    /// not raise the floor to its own level and mute itself. Real speech
+    /// dips to the room level between words, and that is what keeps the
+    /// floor where it belongs now.
+    func testLongTurnKeepsItsFloor() {
+        var detector = VoiceActivityDetector()
+        let start = Date(timeIntervalSince1970: 0)
+        var now = feed(&detector, dBFS: -60, seconds: 5, from: start)
+        // Three minutes of talking at -25 with a 100 ms dip to the room
+        // level once a second.
+        for _ in 0..<180 {
+            now = feed(&detector, dBFS: -25, seconds: 0.9, from: now)
+            XCTAssertTrue(detector.isSpeaking)
+            now = feed(&detector, dBFS: -60, seconds: 0.1, from: now)
+            XCTAssertTrue(detector.isSpeaking)
+        }
+        XCTAssertEqual(detector.noiseFloor, -60, accuracy: 3)
+    }
+
+    /// Even with no dip at all the floor rises slowly enough that a stretch
+    /// far longer than anyone talks without breathing stays confirmed.
+    func testGaplessSpeechDoesNotMuteItself() {
+        var detector = VoiceActivityDetector()
+        let start = Date(timeIntervalSince1970: 0)
+        var now = feed(&detector, dBFS: -60, seconds: 5, from: start)
+        now = feed(&detector, dBFS: -25, seconds: 8, from: now)
+        XCTAssertTrue(detector.isSpeaking)
+    }
+
+    /// The whole microphone path, as the app runs it, over a trace recorded
+    /// in the room YB-50 was reported in. Before the fix this read as
+    /// speaking from the first second to the last.
+    func testDryerRoomTraceOnlyConfirmsActualSpeech() {
+        var detector = VoiceActivityDetector()
+        let start = Date(timeIntervalSince1970: 0)
+        var speakingBuffers = 0
+        var speakingAt: [Int: Bool] = [:]
+        for (index, level) in RoomTraces.dryerRoomWithSpeech.enumerated() {
+            // `MicrophoneSource` drops the zero-filled startup buffers.
+            guard level > LevelMeter.silence else { continue }
+            let now = start.addingTimeInterval(Double(index + 1) / 10)
+            if detector.update(dBFS: level, now: now) { speakingBuffers += 1 }
+            speakingAt[index] = detector.isSpeaking
+        }
+        XCTAssertLessThan(speakingBuffers, RoomTraces.dryerRoomWithSpeech.count * 3 / 10)
+        XCTAssertEqual(speakingAt[300], false, "nobody was talking at 30 s")
+        XCTAssertEqual(speakingAt[460], true, "talking at 46 s")
+        XCTAssertEqual(speakingAt[540], true, "talking at 54 s")
     }
 }
 
@@ -268,6 +320,21 @@ final class LevelAnalysisTests: XCTestCase {
             loudOnly.withUnsafeBufferPointer { loudPointer in
                 XCTAssertEqual(sustained, LevelAnalysis.rmsDBFS(loudPointer), accuracy: 0.5)
             }
+        }
+    }
+
+    /// The engine's zero-filled startup buffers: most slices are digital
+    /// zero, so the median lands on one and reads far below anything a
+    /// microphone produces. `MicrophoneSource` drops buffers at or below
+    /// `LevelMeter.silence` on the strength of this.
+    func testMostlyZeroBufferReadsBelowTheSilenceFloor() {
+        let samples = buffer(
+            sliceLength: 480,
+            loudSlices: [true, false, false, true, false, false, true, false, false, false],
+            loudAmplitude: 0.01, quietAmplitude: 0
+        )
+        samples.withUnsafeBufferPointer { pointer in
+            XCTAssertLessThanOrEqual(LevelAnalysis.sustainedDBFS(pointer, sliceLength: 480), LevelMeter.silence)
         }
     }
 
