@@ -107,10 +107,15 @@ curl -fsSL https://yapmeter.com/appcast.xml | grep -o 'sparkle:shortVersionStrin
   names, no version in them.
 - The appcast served from yapmeter.com names the new version. That line is
   proxied by the site's Vercel rewrite from GitHub's latest release, so it
-  proves both that the feed was rebuilt and that the rewrite is alive. If
-  the feed lists only the new version and nothing older, the workflow could
-  not fetch the previous feed and rebuilt from scratch; say so, because
-  the history is lost even though updates still work.
+  proves both that the feed was rebuilt and that the rewrite is alive. The
+  apex 308s to `www.`, so keep `-L`. If the first fetch comes back empty,
+  wait 30 seconds and try again before calling it broken; the first check
+  after the v0.2.3 upload did.
+- The workflow logs a warning that the previous feed "could not be
+  fetched" and the feed holds only the new version. Until YAP-77 is fixed
+  that is expected on every release, not a failure: the release is
+  created before the appcast is uploaded, so `latest` has no feed to
+  fetch at that moment. Updates still work; only the history is missing.
 
 ## 5. Site
 
@@ -130,17 +135,19 @@ git -C ~/Claude/yapmeter-site checkout -b claude/release-vX.Y.Z origin/main
   home page.
 - Commit, push, open the PR (`Show vX.Y.Z on the download button`), with
   `ref YAP-n` for the release's ticket if there is one. Merge it with a
-  merge commit. Vercel deploys `main` on push; wait for it:
+  merge commit and delete the branch (`gh pr merge --merge
+  --delete-branch`); Kaegan asked for the release, and the merge is part
+  of it. Vercel deploys `main` on push, in about a minute. The version is
+  written into the page by `src/main.js` at load, so it is in the built
+  bundle, not the HTML:
 
 ```bash
-until curl -fsSL https://yapmeter.com | grep -q "vX.Y.Z"; do sleep 20; done
+for i in $(seq 1 12); do
+  js=$(curl -fsSL https://yapmeter.com | grep -o 'assets/index-[^"]*\.js' | head -1)
+  [ -n "$js" ] && curl -fsSL "https://yapmeter.com/$js" | grep -q 'vX.Y.Z' && break
+  sleep 15
+done
 ```
-
-The version is written into the page by `src/main.js` at load, not in the
-HTML, so grep the built bundle if the page itself does not carry it:
-`curl -fsSL https://yapmeter.com/assets/$(curl -fsSL https://yapmeter.com | grep -o 'index-[^"]*\.js')`.
-
-Delete the branch after the merge.
 
 ## 6. Report
 
@@ -163,3 +170,11 @@ copies will not be offered it.
 - **A release with no labelled PRs** says "Small fixes and improvements" in
   the update dialog. Check the labels in step 1 while they can still be
   changed.
+- **The workflow's own "could not be fetched" warning looked like an
+  outage.** It is the step-order bug in YAP-77, present on all six
+  releases, and the feed it produces still updates people. Read the
+  warning, check the live feed names the new version, and move on.
+- **v0.2.3 by the numbers**: tag pushed 23:27, run queued in 10 s, tests
+  and archive done by 23:30, notary and dmg done by 23:30 (fast day),
+  release created 23:30, site PR merged and live 23:32. Budget 45 minutes
+  anyway; the notary is the variable.
