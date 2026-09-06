@@ -49,26 +49,15 @@ final class AudioMonitor {
     private var isRetryArmed = false
     private var activationObservers: [any NSObjectProtocol] = []
 
-    /// Whether the turn timer waits for on-device recognition to hear words
-    /// before it starts. `SignalEngine` owns the setting and persists it; this
-    /// is the copy capture reads. Off by default (constitution clause 2).
-    private(set) var confirmWithWords = false
-    /// What the menu says about the on-device model. Meaningless while
-    /// `confirmWithWords` is off.
+    /// What the menu says about the on-device model, under the status line,
+    /// when there is anything to say.
     private(set) var witnessAvailability: WordModelAvailability = .ready
 
     /// Whether a witness is actually listening. The engine only holds the
     /// gate's decision back when this is true, so an unsupported language, a
-    /// failed download or a refused microphone all fall back to today's
-    /// behaviour rather than to a timer that never starts.
+    /// failed download or a refused microphone all fall back to the gate
+    /// alone rather than to a timer that never starts.
     var isWitnessRunning: Bool { witness != nil }
-
-    /// The recogniser arrived in macOS 26; below it the menu doesn't show the
-    /// switch at all.
-    static var supportsWordConfirmation: Bool {
-        if #available(macOS 26, *) { return true }
-        return false
-    }
 
     /// Treat the Mac as being in a call regardless of what detection says,
     /// tapping all system audio instead of one app's. For calls in apps we
@@ -117,11 +106,9 @@ final class AudioMonitor {
     private var quietPolls = 0
     private var isStarting = false
 
-    /// Held as the protocol, not the concrete type: a stored property can't
-    /// carry the macOS 26 availability the witness does.
-    private var witness: (any SpeechWitness)?
-    /// The language the model was found or fetched for, resolved once when the
-    /// switch is turned on.
+    private var witness: WordWitness?
+    /// The language the model was found or fetched for, resolved once at
+    /// launch.
     private var witnessLocale: Locale?
     private var modelTask: Task<Void, Never>?
     private var isStartingWitness = false
@@ -139,6 +126,14 @@ final class AudioMonitor {
     func start() {
         guard detectTimer == nil else { return }
         observeReturnFromSettings()
+        // Resolve the model now, before any call, so the witness is ready for
+        // the first one. Downloading is not listening: nothing is captured
+        // until a meeting app opens the mic (constitution clause 4).
+        if modelTask == nil {
+            modelTask = Task { [weak self] in
+                await self?.prepareModel()
+            }
+        }
         detect()
         detectTimer = Timer.scheduledTimer(withTimeInterval: detectInterval, repeats: true) { [weak self] _ in
             Task { @MainActor in
@@ -151,6 +146,8 @@ final class AudioMonitor {
     func stop() {
         detectTimer?.invalidate()
         detectTimer = nil
+        modelTask?.cancel()
+        modelTask = nil
         tearDownCapture()
     }
 
@@ -389,31 +386,9 @@ final class AudioMonitor {
 
     // MARK: - Words
 
-    /// Turn the word confirmation on or off. Turning it on resolves the
-    /// language and asks macOS for the model if this Mac doesn't have it;
-    /// turning it off drops the witness immediately.
-    func setConfirmWithWords(_ on: Bool) {
-        guard confirmWithWords != on else { return }
-        confirmWithWords = on
-        modelTask?.cancel()
-        modelTask = nil
-
-        guard on else {
-            witnessAvailability = .ready
-            stopWitness()
-            return
-        }
-        modelTask = Task { [weak self] in
-            await self?.prepareModel()
-        }
-    }
-
     /// Find a language with an on-device model, downloading one if needed.
+    /// Runs once, from `start()`.
     private func prepareModel() async {
-        guard #available(macOS 26, *) else {
-            witnessAvailability = .unsupported
-            return
-        }
         guard let locale = await WordWitness.supportedLocale() else {
             Self.logger.error("No on-device speech model for any preferred language")
             witnessAvailability = .unsupported
@@ -435,26 +410,24 @@ final class AudioMonitor {
             }
         }
 
-        guard !Task.isCancelled, confirmWithWords else { return }
-        // The model can become ready long after capture started - at launch
-        // with a call already running, or the first time the switch is turned
-        // on mid-call. The microphone's buffer observer can be attached to a
-        // tap that is already installed, so the witness just joins in rather
-        // than capture having to be torn down and rebuilt around it.
+        guard !Task.isCancelled else { return }
+        // The model can become ready after capture started - at launch with a
+        // call already running, or on a first launch that had to download
+        // it. The microphone's buffer observer can be attached to a tap that
+        // is already installed, so the witness just joins in rather than
+        // capture having to be torn down and rebuilt around it.
         await startWitness()
     }
 
-    /// Build the witness and start the recogniser, if the setting is on and
-    /// there is a model to run. Does nothing otherwise, which is what leaves
-    /// the signal exactly as it is today.
+    /// Build the witness and start the recogniser, if there is a model to
+    /// run. Does nothing otherwise, which leaves the timer on the gate alone.
     ///
     /// Two callers can reach this at once — capture starting, and the model
     /// becoming ready — and there's an `await` before the witness is stored,
     /// so `isStartingWitness` is what stops them building two.
     private func startWitness() async {
         guard !isStartingWitness, witness == nil, isMeetingActive else { return }
-        guard confirmWithWords, witnessAvailability == .ready else { return }
-        guard #available(macOS 26, *), let locale = witnessLocale else { return }
+        guard witnessAvailability == .ready, let locale = witnessLocale else { return }
 
         isStartingWitness = true
         defer { isStartingWitness = false }
@@ -466,7 +439,7 @@ final class AudioMonitor {
             Self.logger.error("Word witness failed to start: \(String(describing: error), privacy: .public)")
             return
         }
-        guard isMeetingActive, confirmWithWords else {
+        guard isMeetingActive else {
             witness.stop()
             return
         }

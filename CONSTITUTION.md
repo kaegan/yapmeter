@@ -17,23 +17,24 @@ These are not preferences. A feature that crosses one is not a Yapmeter feature.
    "Airtime share" is your share of the room. "Yap clash" is you talking over
    someone. There is no "who dominated the meeting".
 2. **Not a transcript tool.** Yapmeter never stores, displays, exports, or syncs
-   words. It listens for speech-shaped energy, not speech. If a measure
-   genuinely needs words (filler count, question ratio), *or needs to know that
-   what it heard was speech at all rather than typing, music or a fan*, it runs
-   on-device speech recognition on **your microphone only**, behind its own
-   opt-in switch that is off by default, and discards the text the moment the
-   number — or the yes/no — is taken. Recognition standing witness like that
-   may report only "there were words, covering audio up to this moment"; the
-   text itself never leaves the code that receives it, and is never logged. The
+   words. It listens for speech-shaped energy, and asks one yes/no question of
+   speech itself: were there words? That question is how the turn timer
+   starts, so typing, music and a fan never run it. It is answered by
+   on-device speech recognition on **your microphone only**, and the text is
+   discarded the moment the yes/no is taken. Recognition standing witness like
+   that may report only "there were words, covering audio up to this moment";
+   the text itself never leaves the code that receives it, and is never
+   logged. A measure that genuinely needs words (filler count, question ratio)
+   is held to the same rule: the number is taken and the text is dropped. The
    far end is never transcribed, under any setting.
 3. **Nothing leaves the Mac.** The app makes exactly one network request of its
    own: the Sparkle update check, which carries the app version and nothing
    else. That check can be followed by a second request of its own, made
    without asking: Sparkle downloading the signed release archive, which it
-   stages on disk until it installs. Turning the speech recognition switch on
-   can cause a third, made by macOS rather than by the app: if this Mac has
-   no on-device model for your language, the system is asked to fetch one,
-   once. None of the three carries anything about you or your meetings. No
+   stages on disk until it installs. A third can happen once, on first
+   launch, made by macOS rather than by the app: if this Mac has no on-device
+   speech model for your language, the system is asked to fetch one. None of
+   the three carries anything about you or your meetings. No
    accounts, no login, no cloud sync, no crash reporting, no analytics in the
    app. The website may run anonymous page analytics. Downloading never
    requires an email address. The staged update, and when it's allowed to
@@ -73,10 +74,12 @@ These are not preferences. A feature that crosses one is not a Yapmeter feature.
   Safari aren't detected yet. State limitations plainly, in the product and on
   the site, rather than hiding them.
 - **Defaults over settings.** Sensitivity exists because rooms differ. Most
-  things should not become a setting; make the default right instead.
-- **Cheap to run.** No background work and no CPU burn between calls. No models
-  unless you switch one on, and even then it runs during a call and is dropped
-  when the call ends.
+  things should not become a setting; make the default right instead. Waiting
+  for words before the timer starts shipped behind a switch and then lost it:
+  the behaviour was right for everyone, so it is simply how the app works.
+- **Cheap to run.** No background work and no CPU burn between calls. The one
+  on-device speech model runs only during a call and is dropped when the call
+  ends.
 
 ## Voice
 

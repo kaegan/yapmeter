@@ -22,9 +22,8 @@ jobs:
 
       - name: Select Xcode 26
         # The word witness (YB-53) calls SpeechAnalyzer, which only exists in
-        # the macOS 26 SDK. `@available(macOS 26, *)` is a runtime gate; it
-        # doesn't conjure the types into an older SDK, so the toolchain has to
-        # be new enough to compile the file at all. Picked by version rather
+        # the macOS 26 SDK, and the app deploys to macOS 26 (YB-67), so the
+        # toolchain has to be new enough to compile it. Picked by version rather
         # than pinned to one app name: the runner image renames it on every
         # point release, and its default Xcode has lagged its newest before.
         run: |

@@ -28,7 +28,7 @@ from pathlib import Path
 
 SPARKLE_NS = "http://www.andymatuschak.org/xml-namespaces/sparkle"
 KEEP_ITEMS = 10
-MINIMUM_SYSTEM_VERSION = "14.2"
+MINIMUM_SYSTEM_VERSION = "26.0"
 
 ET.register_namespace("sparkle", SPARKLE_NS)
 
