@@ -1059,3 +1059,107 @@ final class WordTraceReplayTests: XCTestCase {
         XCTAssertEqual(result.confirmedOnset, result.gateOnsetAtConfirm, "no seconds are lost to the wait")
     }
 }
+
+final class TapSilenceTests: XCTestCase {
+    private let start = Date(timeIntervalSince1970: 1_700_000_000)
+
+    /// Feed the detector at the app's real detect rate.
+    @discardableResult
+    private func feed(
+        _ silence: inout TapSilence,
+        seconds: TimeInterval,
+        isDelivering: Bool = true,
+        heardNonZero: Bool = false,
+        nearEndAlive: Bool = true,
+        from origin: Date
+    ) -> Date {
+        let step: TimeInterval = 2
+        var now = origin
+        let end = origin.addingTimeInterval(seconds)
+        while now < end {
+            now = now.addingTimeInterval(step)
+            silence.update(
+                isDelivering: isDelivering,
+                heardNonZero: heardNonZero,
+                nearEndAlive: nearEndAlive,
+                now: now
+            )
+        }
+        return now
+    }
+
+    /// The whole point: frames arriving, none of them non-zero, near end
+    /// alive. That is a refused System Audio Recording and nothing else.
+    func testBlocksAfterAMinuteOfDeliveredZeros() {
+        var silence = TapSilence()
+        feed(&silence, seconds: 90, from: start)
+        XCTAssertEqual(silence.verdict, .blocked)
+    }
+
+    /// A quiet stretch inside a call must not be mistaken for it.
+    func testDoesNotBlockBeforeTheWindowIsUp() {
+        var silence = TapSilence()
+        feed(&silence, seconds: 30, from: start)
+        XCTAssertEqual(silence.verdict, .healthy)
+    }
+
+    /// One sample settles it for the rest of the call: a tap that has been
+    /// heard once was never blocked, however quiet it goes afterwards.
+    func testOneNonZeroSampleLatchesHealthy() {
+        var silence = TapSilence()
+        var now = feed(&silence, seconds: 30, from: start)
+        now = feed(&silence, seconds: 2, heardNonZero: true, from: now)
+        feed(&silence, seconds: 300, from: now)
+        XCTAssertEqual(silence.verdict, .healthy)
+        XCTAssertTrue(silence.hasHeardAudio)
+    }
+
+    /// A tap delivering nothing at all is a different failure, and the
+    /// microphone being dead means the room can't be vouched for.
+    func testNeitherIdleTapNorDeadNearEndBlocks() {
+        var idle = TapSilence()
+        feed(&idle, seconds: 300, isDelivering: false, from: start)
+        XCTAssertEqual(idle.verdict, .healthy)
+
+        var deaf = TapSilence()
+        feed(&deaf, seconds: 300, nearEndAlive: false, from: start)
+        XCTAssertEqual(deaf.verdict, .healthy)
+    }
+
+    /// The microphone takes a few seconds to deliver its first buffer. That
+    /// wait is neither counted against the tap nor credited to it.
+    func testTimeBeforeTheNearEndWakesUpIsNotCounted() {
+        var silence = TapSilence()
+        var now = feed(&silence, seconds: 58, nearEndAlive: false, from: start)
+        now = feed(&silence, seconds: 30, from: now)
+        XCTAssertEqual(silence.verdict, .healthy)
+        feed(&silence, seconds: 40, from: now)
+        XCTAssertEqual(silence.verdict, .blocked)
+    }
+
+    /// A sleeping Mac leaves a long gap between ticks, which says nothing
+    /// about the tap and mustn't be spent as if it were silence.
+    func testALongGapBetweenTicksIsClamped() {
+        var silence = TapSilence()
+        silence.update(isDelivering: true, heardNonZero: false, nearEndAlive: true, now: start)
+        silence.update(
+            isDelivering: true,
+            heardNonZero: false,
+            nearEndAlive: true,
+            now: start.addingTimeInterval(3600)
+        )
+        XCTAssertEqual(silence.verdict, .healthy)
+    }
+
+    /// Teardown and the one retry both go through `reset`, so no verdict
+    /// carries across a rebuilt tap.
+    func testResetForgetsTheCall() {
+        var silence = TapSilence()
+        feed(&silence, seconds: 90, from: start)
+        XCTAssertEqual(silence.verdict, .blocked)
+        silence.reset()
+        XCTAssertEqual(silence.verdict, .healthy)
+        feed(&silence, seconds: 30, from: start.addingTimeInterval(200))
+        XCTAssertEqual(silence.verdict, .healthy)
+    }
+}

@@ -1,6 +1,7 @@
 import CoreAudio
 import AudioToolbox
 import Foundation
+import os
 
 /// Captures a stereo mixdown of one or more processes' output audio via a
 /// CoreAudio process tap (macOS 14.2+) and reports a running RMS level in
@@ -28,6 +29,56 @@ final class ProcessTapSource: @unchecked Sendable {
     }
 
     let levelMeter = LevelMeter()
+
+    /// Whether frames arrived since the last time this was read, and whether
+    /// any sample has ever been non-zero. Together they are what tells a tap
+    /// blocked by a refused System Audio Recording permission apart from a
+    /// quiet one: see `TapSilence`. Written on the IO thread, read from the
+    /// main actor once per detect tick.
+    private let delivery = DeliveryCounter()
+
+    /// True if the tap handed over frames since the previous call. Consuming,
+    /// like `LevelMeter.consumePeak`, so each detect tick asks about its own
+    /// interval rather than about all of time.
+    func consumeIsDelivering() -> Bool { delivery.consumeDelivered() }
+
+    /// Whether any sample since capture started has been non-zero. A blocked
+    /// tap delivers bit-exact zeros and nothing else.
+    var hasHeardNonZeroAudio: Bool { delivery.hasHeardNonZeroAudio }
+
+    /// Counts what the IO thread delivered without allocating or blocking it
+    /// for longer than `LevelMeter` already does.
+    private final class DeliveryCounter: @unchecked Sendable {
+        private var lock = os_unfair_lock_s()
+        private var _delivered = false
+        private var _heardNonZero = false
+
+        func record(nonZero: Bool) {
+            os_unfair_lock_lock(&lock)
+            _delivered = true
+            if nonZero { _heardNonZero = true }
+            os_unfair_lock_unlock(&lock)
+        }
+
+        func consumeDelivered() -> Bool {
+            os_unfair_lock_lock(&lock)
+            defer { _delivered = false; os_unfair_lock_unlock(&lock) }
+            return _delivered
+        }
+
+        var hasHeardNonZeroAudio: Bool {
+            os_unfair_lock_lock(&lock)
+            defer { os_unfair_lock_unlock(&lock) }
+            return _heardNonZero
+        }
+
+        func reset() {
+            os_unfair_lock_lock(&lock)
+            _delivered = false
+            _heardNonZero = false
+            os_unfair_lock_unlock(&lock)
+        }
+    }
 
     private var tapID: AudioObjectID = kAudioObjectUnknown
     private var aggregateDeviceID: AudioObjectID = kAudioObjectUnknown
@@ -92,9 +143,10 @@ final class ProcessTapSource: @unchecked Sendable {
         aggregateDeviceID = newAggregateID
 
         let meter = levelMeter
+        let counter = delivery
         var newIOProcID: AudioDeviceIOProcID?
         status = AudioDeviceCreateIOProcIDWithBlock(&newIOProcID, aggregateDeviceID, ioQueue) { _, inputData, _, _, _ in
-            ProcessTapSource.processBuffer(inputData, into: meter)
+            ProcessTapSource.processBuffer(inputData, into: meter, counting: counter)
         }
         guard status == noErr, let procID = newIOProcID else {
             tearDownDevices()
@@ -115,6 +167,7 @@ final class ProcessTapSource: @unchecked Sendable {
         tearDownDevices()
         isRunning = false
         levelMeter.reset()
+        delivery.reset()
     }
 
     deinit {
@@ -150,7 +203,11 @@ final class ProcessTapSource: @unchecked Sendable {
     /// buffers around 10ms long, too short to slice into anything meaningful,
     /// and this end has no keyboard-click problem to begin with - it only
     /// ever hears what the meeting app plays.
-    private static func processBuffer(_ bufferList: UnsafePointer<AudioBufferList>, into meter: LevelMeter) {
+    private static func processBuffer(
+        _ bufferList: UnsafePointer<AudioBufferList>,
+        into meter: LevelMeter,
+        counting delivery: DeliveryCounter
+    ) {
         let buffers = UnsafeMutableAudioBufferListPointer(UnsafeMutablePointer(mutating: bufferList))
         var sumSquares: Double = 0
         var sampleCount = 0
@@ -169,6 +226,9 @@ final class ProcessTapSource: @unchecked Sendable {
 
         guard sampleCount > 0 else { return }
         let rms = (sumSquares / Double(sampleCount)).squareRoot()
+        // Free: the sum of squares is zero if and only if every sample was,
+        // so the blocked-tap evidence costs nothing extra on this thread.
+        delivery.record(nonZero: sumSquares > 0)
         meter.update(dBFS: LevelAnalysis.dBFS(rms: rms))
     }
 }
