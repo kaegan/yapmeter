@@ -5,7 +5,7 @@ GitHub's own `--generate-notes` lists every PR title verbatim with its author
 and a link, which is a changelog for the developer, not release notes for the
 person reading Sparkle's update dialog. This builds the notes the reader
 wants instead: a "New features" list and a "Bug fixes" list, each line a PR
-title with its `[YB-n]` prefix stripped, and nothing else. Which list a PR
+title with its `[YAP-n]` prefix stripped, and nothing else. Which list a PR
 lands in comes from its label — `enhancement` or `bug` — and a PR with
 neither (tooling, skills, CI, docs) is left out. If nothing qualifies the
 notes say so in one line rather than shipping an empty dialog.
@@ -26,12 +26,14 @@ import sys
 
 FEATURE_LABEL = "enhancement"
 BUG_LABEL = "bug"
-TICKET_PREFIX = re.compile(r"^\s*\[YB-\d+\]\s*")
+# Both prefixes: the backlog was renamed from YB to YAP, and a release can
+# span PRs merged under either one.
+TICKET_PREFIX = re.compile(r"^\s*\[(?:YAP|YB)-\d+\]\s*")
 FALLBACK = "Small fixes and improvements under the hood."
 
 
 def clean_title(title):
-    """`[YB-42] fix the thing` -> `Fix the thing`."""
+    """`[YAP-42] fix the thing` -> `Fix the thing`."""
     title = TICKET_PREFIX.sub("", title).strip().rstrip(".")
     return title[:1].upper() + title[1:] if title else title
 
