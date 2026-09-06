@@ -391,6 +391,37 @@ final class TurnClockTests: XCTestCase {
         XCTAssertNil(ended)
     }
 
+    func testTimerAndPetAgreeThroughABreathAndAStop() {
+        var clock = TurnClock()
+        var machine = SignalStateMachine()
+        // At the engine's 50 Hz: three seconds of speech, a one-second
+        // breath, two more seconds, then a real stop. Blue pet with a timer
+        // or another pet with none, on every tick; and the breath must not
+        // blink either of them.
+        func speaking(at tick: Int) -> Bool { tick < 150 || (200..<300).contains(tick) }
+        var shown: [Int?] = []
+        for tick in 0..<500 {
+            let now = start.addingTimeInterval(Double(tick) / 50)
+            let near = speaking(at: tick)
+            let onset: Date? = near ? (tick < 150 ? start : start.addingTimeInterval(4)) : nil
+            let aspect = machine.aspect(meetingActive: true, nearSpeaking: near, farSpeaking: false, now: now)
+            let seconds = clock.update(speaking: near, speechStartedAt: onset, now: now)
+            XCTAssertEqual(
+                seconds != nil, aspect == .speaking,
+                "tick \(tick): seconds \(String(describing: seconds)) under aspect \(aspect)"
+            )
+            shown.append(seconds)
+        }
+        // Through the breath the count kept going...
+        XCTAssertTrue((150..<200).allSatisfy { shown[$0] != nil })
+        // ...and the resumption reconnected to the original start.
+        XCTAssertEqual(shown[299], 5)
+        // After the stop both go together, within the gap, and stay gone.
+        XCTAssertNotNil(shown[398])
+        XCTAssertNil(shown[401])
+        XCTAssertNil(shown[499])
+    }
+
     func testResumingInsideTheGapContinuesTheTurn() {
         var clock = TurnClock()
         _ = clock.update(speaking: true, speechStartedAt: start, now: start)
@@ -403,6 +434,18 @@ final class TurnClockTests: XCTestCase {
         let resumeOnset = start.addingTimeInterval(2.2)
         let seconds = clock.update(speaking: true, speechStartedAt: resumeOnset, now: start.addingTimeInterval(3.4))
         XCTAssertEqual(seconds, 3)
+    }
+
+    func testAResumedTurnStaysReconnectedWhileItContinues() {
+        var clock = TurnClock()
+        _ = clock.update(speaking: true, speechStartedAt: start, now: start)
+        _ = clock.update(speaking: false, speechStartedAt: nil, now: start.addingTimeInterval(1))
+        let resumeOnset = start.addingTimeInterval(1.5)
+        _ = clock.update(speaking: true, speechStartedAt: resumeOnset, now: start.addingTimeInterval(2))
+        // The detector keeps reporting the same onset for the rest of the
+        // turn. That must not read as "a new turn began at 1.5s" a tick later.
+        let seconds = clock.update(speaking: true, speechStartedAt: resumeOnset, now: start.addingTimeInterval(4))
+        XCTAssertEqual(seconds, 4)
     }
 
     func testResumingAfterTheGapStartsFresh() {
