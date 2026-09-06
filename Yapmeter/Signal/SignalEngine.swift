@@ -25,15 +25,30 @@ final class SignalEngine {
         }
     }
 
+    /// Whether the turn timer waits until the Mac has heard words before it
+    /// starts, so typing, music and fans don't run it. A mode rather than an
+    /// act of listening, so it persists across launches the way Sensitivity
+    /// does. Off by default (constitution clause 2).
+    var confirmWithWords: Bool {
+        didSet {
+            guard confirmWithWords != oldValue else { return }
+            UserDefaults.standard.set(confirmWithWords, forKey: Self.confirmWithWordsKey)
+            speechConfirmation.reset()
+            audioMonitor.setConfirmWithWords(confirmWithWords)
+        }
+    }
+
     let audioMonitor = AudioMonitor()
 
     private var farEndDetector: VoiceActivityDetector
     private var nearEndDetector: VoiceActivityDetector
+    private var speechConfirmation = SpeechConfirmation()
     private var stateMachine = SignalStateMachine()
     private var turnClock = TurnClock()
     private var tickTimer: Timer?
 
     private static let sensitivityKey = "sensitivity"
+    private static let confirmWithWordsKey = "confirmWithWords"
     private static let logger = Logger(subsystem: "fyi.kaegan.yapmeter", category: "signal")
     private var lastLevelLogAt = Date.distantPast
     private static let tickInterval: TimeInterval = 1.0 / 50.0
@@ -42,6 +57,9 @@ final class SignalEngine {
         let stored = UserDefaults.standard.string(forKey: Self.sensitivityKey)
         let sensitivity = stored.flatMap(VoiceActivityDetector.Sensitivity.init(rawValue:)) ?? .normal
         self.sensitivity = sensitivity
+        // `bool(forKey:)` is false for a key that was never written, which is
+        // the default this setting wants.
+        self.confirmWithWords = UserDefaults.standard.bool(forKey: Self.confirmWithWordsKey)
         // The far end gets a shorter onset than the near end's default: it
         // drives the block lamp, not the turn timer, and the lamp's dwell
         // (1.2s) plus the detector's hangover (0.7s) is already close to the
@@ -49,6 +67,12 @@ final class SignalEngine {
         // ordinary mid-sentence pause on their end flash the lamp clear.
         self.farEndDetector = VoiceActivityDetector(sensitivity: sensitivity, onsetEvidence: 0.25)
         self.nearEndDetector = VoiceActivityDetector(sensitivity: sensitivity)
+        // `didSet` doesn't run during `init`, so the stored setting has to be
+        // handed over by hand. Nothing starts here: the monitor only resolves
+        // the model, and only if the setting is on.
+        if confirmWithWords {
+            audioMonitor.setConfirmWithWords(true)
+        }
     }
 
     func start() {
@@ -79,6 +103,7 @@ final class SignalEngine {
             // the hangover keep a stale "speaking" alive across meetings.
             farEndDetector.reset()
             nearEndDetector.reset()
+            speechConfirmation.reset()
             turnClock.reset()
             update(\.speakingSeconds, to: nil)
             update(\.farEndSpeaking, to: false)
@@ -93,7 +118,29 @@ final class SignalEngine {
         // (false, after a reset) rather than being fed silence it never heard.
         let levels = audioMonitor.sampleLevels()
         let far = levels.farEnd.map { farEndDetector.update(dBFS: $0, now: now) } ?? farEndDetector.isSpeaking
-        let near = levels.nearEnd.map { nearEndDetector.update(dBFS: $0, now: now) } ?? nearEndDetector.isSpeaking
+        let gate = levels.nearEnd.map { nearEndDetector.update(dBFS: $0, now: now) } ?? nearEndDetector.isSpeaking
+
+        // With the witness listening, the gate's decision is a candidate the
+        // recogniser still has to back up with words; without it (the setting
+        // off, macOS 14, no model, no microphone) the gate is the decision, as
+        // it has always been. Either way the gate owns onset and release: this
+        // can only ever delay a start.
+        let near: Bool
+        let nearOnset: Date?
+        if audioMonitor.isWitnessRunning {
+            let confirmed = speechConfirmation.update(
+                gateSpeaking: gate,
+                gateStartedAt: nearEndDetector.speechStartedAt,
+                wordsHeardThrough: levels.nearEndWordsThrough,
+                now: now
+            )
+            near = confirmed.isSpeaking
+            nearOnset = confirmed.speechStartedAt
+        } else {
+            speechConfirmation.reset()
+            near = gate
+            nearOnset = nearEndDetector.speechStartedAt
+        }
         logLevels(levels, far: far, near: near, now: now)
 
         update(\.farEndSpeaking, to: far)
@@ -106,7 +153,7 @@ final class SignalEngine {
         // while the pet is blue. Blue with a timer, or another colour with
         // none: the two can't disagree, whatever either struct decides.
         let seconds = turnClock.update(
-            speaking: near, speechStartedAt: nearEndDetector.speechStartedAt, now: now
+            speaking: near, speechStartedAt: nearOnset, now: now
         )
         update(\.speakingSeconds, to: aspect == .speaking ? seconds : nil)
         update(\.aspect, to: aspect)
@@ -120,8 +167,11 @@ final class SignalEngine {
         lastLevelLogAt = now
         let nearText = levels.nearEnd.map { String(format: "%.1f", $0) } ?? "none"
         let farText = levels.farEnd.map { String(format: "%.1f", $0) } ?? "none"
+        // Whether the witness heard words in the last second, never which
+        // ones: the log stays word-free (constitution clause 2).
+        let words = levels.nearEndWordsThrough.map { now.timeIntervalSince($0) < 1 } ?? false
         Self.logger.debug(
-            "near \(nearText, privacy: .public) dBFS floor \(self.nearEndDetector.noiseFloor, format: .fixed(precision: 1), privacy: .public) evidence \(self.nearEndDetector.evidence, format: .fixed(precision: 2), privacy: .public) speaking \(near, privacy: .public) | far \(farText, privacy: .public) dBFS floor \(self.farEndDetector.noiseFloor, format: .fixed(precision: 1), privacy: .public) speaking \(far, privacy: .public)"
+            "near \(nearText, privacy: .public) dBFS floor \(self.nearEndDetector.noiseFloor, format: .fixed(precision: 1), privacy: .public) evidence \(self.nearEndDetector.evidence, format: .fixed(precision: 2), privacy: .public) gate \(self.nearEndDetector.isSpeaking, privacy: .public) words \(words, privacy: .public) speaking \(near, privacy: .public) | far \(farText, privacy: .public) dBFS floor \(self.farEndDetector.noiseFloor, format: .fixed(precision: 1), privacy: .public) speaking \(far, privacy: .public)"
         )
     }
 

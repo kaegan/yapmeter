@@ -1,5 +1,6 @@
 import AVFoundation
 import Foundation
+import os
 
 /// Captures the default input device via `AVAudioEngine` and reports a running
 /// RMS level in dBFS through `LevelMeter`. This is the *near* end: you.
@@ -27,6 +28,38 @@ final class MicrophoneSource: @unchecked Sendable {
 
     let levelMeter = LevelMeter()
 
+    /// Handed each buffer after its level has been measured, for anything that
+    /// needs the audio itself rather than a number — today only the word
+    /// witness. Settable at any time, including while the tap is running: the
+    /// tap closure captures the box, not the closure inside it, so a witness
+    /// that becomes available mid-call can be attached without tearing capture
+    /// down and starting it again. Only the near end ever has one; the far end
+    /// is never transcribed (constitution clause 2).
+    var bufferObserver: (@Sendable (AVAudioPCMBuffer) -> Void)? {
+        get { observerBox.observer }
+        set { observerBox.observer = newValue }
+    }
+
+    /// Written from the main actor, read on the tap thread once per buffer.
+    private final class ObserverBox: @unchecked Sendable {
+        private var lock = os_unfair_lock_s()
+        private var _observer: (@Sendable (AVAudioPCMBuffer) -> Void)?
+
+        var observer: (@Sendable (AVAudioPCMBuffer) -> Void)? {
+            get {
+                os_unfair_lock_lock(&lock)
+                defer { os_unfair_lock_unlock(&lock) }
+                return _observer
+            }
+            set {
+                os_unfair_lock_lock(&lock)
+                _observer = newValue
+                os_unfair_lock_unlock(&lock)
+            }
+        }
+    }
+
+    private let observerBox = ObserverBox()
     private let engine = AVAudioEngine()
     private(set) var isRunning = false
 
@@ -59,8 +92,10 @@ final class MicrophoneSource: @unchecked Sendable {
         // size `LevelAnalysis.sustainedDBFS` uses to tell a keystroke click
         // apart from sustained speech. See `processBuffer` below.
         let sliceLength = max(1, Int(format.sampleRate / 100))
+        let box = observerBox
         input.installTap(onBus: 0, bufferSize: 1024, format: format) { buffer, _ in
             MicrophoneSource.processBuffer(buffer, sliceLength: sliceLength, into: meter)
+            box.observer?(buffer)
         }
         engine.prepare()
         do {

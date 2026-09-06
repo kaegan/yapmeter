@@ -18,15 +18,22 @@ These are not preferences. A feature that crosses one is not a Yapmeter feature.
    someone. There is no "who dominated the meeting".
 2. **Not a transcript tool.** Yapmeter never stores, displays, exports, or syncs
    words. It listens for speech-shaped energy, not speech. If a measure
-   genuinely needs words (filler count, question ratio), it runs on-device
-   speech recognition on **your microphone only**, behind its own opt-in switch
-   that is off by default, and discards the text the moment the number is
-   counted. The far end is never transcribed, under any setting.
-3. **Nothing leaves the Mac.** The app makes exactly one network request: the
-   Sparkle update check, which carries the app version and nothing else. No
-   accounts, no login, no cloud sync, no crash reporting, no analytics in the
-   app. The website may run anonymous page analytics. Downloading never
-   requires an email address.
+   genuinely needs words (filler count, question ratio), *or needs to know that
+   what it heard was speech at all rather than typing, music or a fan*, it runs
+   on-device speech recognition on **your microphone only**, behind its own
+   opt-in switch that is off by default, and discards the text the moment the
+   number — or the yes/no — is taken. Recognition standing witness like that
+   may report only "there were words, covering audio up to this moment"; the
+   text itself never leaves the code that receives it, and is never logged. The
+   far end is never transcribed, under any setting.
+3. **Nothing leaves the Mac.** The app makes exactly one network request of its
+   own: the Sparkle update check, which carries the app version and nothing
+   else. Turning the speech recognition switch on can cause a second, made by
+   macOS rather than by the app: if this Mac has no on-device model for your
+   language, the system is asked to fetch one, once. Neither request carries
+   anything about you or your meetings. No accounts, no login, no cloud sync,
+   no crash reporting, no analytics in the app. The website may run anonymous
+   page analytics. Downloading never requires an email address.
 4. **It only listens during a call.** Capture starts when a meeting app opens
    the mic and tears down when the call ends. The app never holds the mic or
    system audio open all day. Manual listening is always on a timer or
@@ -41,8 +48,8 @@ These are not preferences. A feature that crosses one is not a Yapmeter feature.
 7. **A new permission, network call, or file on disk is a constitutional
    amendment.** Edit this document first, and update the README, the
    permission prompt strings, and the site's privacy section in the same
-   change. The line "Nothing is recorded, transcribed, or sent anywhere" is a
-   promise, not copy.
+   change. The line "Nothing is recorded or sent anywhere" is a promise, not
+   copy, and so is every condition attached to it.
 
 ## How it should feel
 
@@ -60,7 +67,9 @@ These are not preferences. A feature that crosses one is not a Yapmeter feature.
   the site, rather than hiding them.
 - **Defaults over settings.** Sensitivity exists because rooms differ. Most
   things should not become a setting; make the default right instead.
-- **Cheap to run.** No models, no background work, no CPU burn between calls.
+- **Cheap to run.** No background work and no CPU burn between calls. No models
+  unless you switch one on, and even then it runs during a call and is dropped
+  when the call ends.
 
 ## Voice
 

@@ -14,7 +14,7 @@ permissions:
 
 jobs:
   release:
-    runs-on: macos-15
+    runs-on: macos-26
     timeout-minutes: 45
 
     steps:
@@ -89,6 +89,19 @@ jobs:
           if ! printf '%s' "$APPLE_APP_SPECIFIC_PASSWORD" | grep -Eq '^[a-z]{4}(-[a-z]{4}){3}$'; then
             echo "::warning::APPLE_APP_SPECIFIC_PASSWORD is not in Apple's xxxx-xxxx-xxxx-xxxx shape. It must be an app-specific password from appleid.apple.com, not your Apple ID password."
           fi
+
+      - name: Select Xcode 26
+        # The word witness (YB-53) calls SpeechAnalyzer, which only exists in
+        # the macOS 26 SDK. `@available(macOS 26, *)` is a runtime gate; it
+        # doesn't conjure the types into an older SDK, so the toolchain has to
+        # be new enough to compile the file at all. Picked by version rather
+        # than pinned to one app name: the runner image renames it on every
+        # point release, and its default Xcode has lagged its newest before.
+        run: |
+          latest=$(ls -d /Applications/Xcode_26*.app | sort -V | tail -1)
+          echo "Using $latest"
+          sudo xcode-select -s "$latest"
+          xcodebuild -version
 
       - name: Install XcodeGen
         run: brew install xcodegen

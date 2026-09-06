@@ -25,6 +25,20 @@ struct YapmeterMenu: View {
                 Toggle(level.displayName, isOn: selection(for: level))
             }
         }
+        // The recogniser arrived in macOS 26, so on anything older the switch
+        // isn't shown at all rather than shown greyed out: a setting you can
+        // never turn on is just a question you can't answer. A submenu, like
+        // Sensitivity, because the plain line about where the audio goes
+        // belongs next to the switch and not in the top-level menu.
+        if AudioMonitor.supportsWordConfirmation {
+            Menu("Speech recognition") {
+                Toggle("Wait for words before timing", isOn: $engine.confirmWithWords)
+                Text("Runs on this Mac, on your microphone only. No text is kept.")
+                if let line = speechModelLine {
+                    Text(line)
+                }
+            }
+        }
         // For calls detection can't see (FaceTime, for one). Named for what
         // it does rather than "manual mode", because what it does is the
         // caveat: anything the Mac plays will drive the signal while it's on.
@@ -79,6 +93,18 @@ struct YapmeterMenu: View {
         case .running(let bundleIDs): return "Listening to \(appList(bundleIDs))"
         case .microphoneUnavailable: return "Microphone unavailable, so the turn timer is off"
         case .error: return "Couldn't listen to the meeting audio"
+        }
+    }
+
+    /// What the on-device model is doing, when it's doing anything worth
+    /// saying. Plain and literal: this is a limitation line, not Yap's.
+    private var speechModelLine: String? {
+        guard engine.confirmWithWords else { return nil }
+        switch engine.audioMonitor.witnessAvailability {
+        case .ready: return nil
+        case .downloading: return "Downloading the speech model…"
+        case .downloadFailed: return "Couldn't download the speech model. The timer works as before."
+        case .unsupported: return "Your language has no on-device speech model. The timer works as before."
         }
     }
 

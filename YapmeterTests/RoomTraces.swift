@@ -65,4 +65,93 @@ enum RoomTraces {
         -30.6, -37.7, -38.7, -29.8, -29.4, -27.6, -27.3, -25.1, -27.6, -31.8, -34.2, -29.9,
         -27.7, -29.5, -27.7, -37.7, -32.3, -36.0, -45.4, -48.7, -50.6, -48.5, -49.3, -49.0,
     ]
+
+    /// One recogniser result that contained words: when it arrived, and how
+    /// far into the audio it covered. Both are seconds from the start of the
+    /// clip, on the same clock as the levels. Numbers only, never the text.
+    struct WordEvent {
+        let arrivedAt: TimeInterval
+        let heardThrough: TimeInterval
+    }
+
+    /// A stimulus from the 2026-09-05 measurement: the levels the microphone
+    /// path produced, and what the recogniser made of the same audio.
+    struct WordTrace {
+        let levels: [Float]
+        let words: [WordEvent]
+        /// How long the clip played, in seconds.
+        let duration: TimeInterval
+    }
+
+    /// YB-53, 2026-09-05, MacBook Air M4, built-in mic, clips played through
+    /// the speakers into a quiet room. A side-by-side CLI harness fed the
+    /// app's `VoiceActivityDetector` and Apple's `SpeechTranscriber` from the
+    /// same buffers. The gate called typing and music speech for most of their
+    /// duration; the recogniser produced no words at all on either.
+
+    /// Fast typing at a realistic desk level, peaks around -35 dBFS. The gate
+    /// said "speaking" for 77% of it.
+    static let typing = WordTrace(
+        levels: [
+            -56, -60, -58, -56, -61, -38, -38, -43, -40, -56, -54, -57, -32, -54, -37, -56, -42, -61, -39, -46,
+            -54, -40, -35, -53, -36, -38, -45, -49, -54, -35, -40, -33, -35, -41, -55, -34, -36, -36, -45, -47,
+            -36, -40, -40, -38, -48, -63, -36, -38, -54, -54, -40, -40, -41, -51, -35, -38, -56, -37, -49, -33,
+            -33, -33, -57, -34, -56, -35, -53, -39, -36, -38, -54, -34, -44, -34, -35, -52, -38, -59, -34, -41,
+            -34, -36, -34, -38, -38, -35, -36, -34, -39, -36, -36, -34, -54, -62, -62, -45, -37, -44, -59, -59,
+            -64, -60, -55, -56, -58, -60, -64, -57, -58, -59, -60, -57, -62, -62, -63, -63, -63, -65, -62, -67,
+            -61, -62,
+        ],
+        words: [],
+        duration: 12.2
+    )
+
+    /// Background music at -33 dBFS. The gate said "speaking" for the whole
+    /// clip; the recogniser heard nothing, vocals and all.
+    static let music = WordTrace(
+        levels: [
+            -54, -60, -32, -33, -34, -36, -31, -33, -35, -36, -36, -33, -34, -36, -36, -33, -36, -40, -43, -33,
+            -35, -36, -36, -31, -33, -36, -36, -31, -33, -35, -36, -32, -34, -37, -41, -35, -35, -36, -36, -37,
+            -34, -36, -37, -36, -33, -34, -36, -36, -34, -36, -38, -42, -31, -33, -35, -35, -35, -33, -35, -35,
+            -34, -33, -34, -35, -34, -31, -34, -40, -44, -31, -32, -34, -35, -31, -32, -34, -34, -30, -32, -34,
+            -35, -30, -32, -36, -39, -42, -33, -34, -35, -35, -30, -34, -35, -35, -31, -34, -35, -35, -31, -33,
+            -40, -43, -34, -35, -36, -36, -34, -35, -36, -36, -33, -35, -36, -35, -33, -36, -38, -41, -43, -33,
+            -35, -35, -34, -30, -34, -35, -38, -52, -55, -58, -62, -57, -55, -65, -55, -60, -60, -58, -59, -54,
+            -53, -53, -56, -62, -54, -54, -53, -62, -62, -60, -60, -64,
+        ],
+        words: [],
+        duration: 15.8
+    )
+
+    /// A spoken paragraph, 23.4 s. Volatile results landed about once a
+    /// second, each trailing the audio by about 0.1 s.
+    static let paragraph = WordTrace(
+        levels: [
+            -61, -58, -41, -24, -20, -24, -27, -45, -21, -24, -24, -20, -23, -24, -26, -56, -61, -63, -25, -37,
+            -24, -41, -22, -38, -28, -33, -42, -24, -21, -27, -22, -24, -29, -23, -25, -24, -22, -22, -39, -24,
+            -24, -24, -21, -37, -21, -30, -45, -27, -34, -22, -29, -25, -28, -54, -58, -52, -35, -24, -21, -24,
+            -30, -26, -23, -24, -22, -25, -30, -23, -21, -34, -22, -23, -26, -31, -58, -60, -25, -43, -19, -23,
+            -24, -25, -26, -26, -25, -36, -32, -26, -22, -28, -36, -39, -25, -23, -27, -27, -25, -30, -52, -54,
+            -40, -25, -27, -24, -37, -22, -41, -24, -26, -25, -24, -35, -23, -25, -51, -54, -42, -38, -22, -30,
+            -23, -39, -27, -24, -28, -26, -26, -26, -23, -27, -21, -32, -28, -24, -23, -34, -23, -39, -22, -21,
+            -22, -21, -27, -49, -57, -38, -28, -24, -44, -23, -30, -29, -41, -23, -28, -26, -25, -27, -38, -21,
+            -28, -26, -28, -22, -41, -24, -26, -24, -22, -36, -24, -25, -28, -46, -54, -55, -28, -22, -26, -26,
+            -24, -31, -23, -23, -22, -29, -23, -26, -26, -38, -24, -52, -56, -58, -56, -53, -55, -58, -55, -55,
+            -56, -57, -59, -58, -60, -61, -60, -60, -60, -61, -57, -58, -58, -60,
+        ],
+        words: [
+            WordEvent(arrivedAt: 1.2, heardThrough: 1.1), WordEvent(arrivedAt: 2.2, heardThrough: 2.1),
+            WordEvent(arrivedAt: 3.2, heardThrough: 3.2), WordEvent(arrivedAt: 4.1, heardThrough: 4.0),
+            WordEvent(arrivedAt: 5.1, heardThrough: 5.0), WordEvent(arrivedAt: 6.0, heardThrough: 5.9),
+            WordEvent(arrivedAt: 7.0, heardThrough: 6.9), WordEvent(arrivedAt: 8.0, heardThrough: 8.0),
+            WordEvent(arrivedAt: 8.9, heardThrough: 8.8), WordEvent(arrivedAt: 9.9, heardThrough: 9.8),
+            WordEvent(arrivedAt: 10.8, heardThrough: 10.7), WordEvent(arrivedAt: 11.8, heardThrough: 11.7),
+            WordEvent(arrivedAt: 12.8, heardThrough: 12.8), WordEvent(arrivedAt: 13.7, heardThrough: 13.6),
+            WordEvent(arrivedAt: 14.7, heardThrough: 14.6), WordEvent(arrivedAt: 15.6, heardThrough: 15.5),
+            WordEvent(arrivedAt: 16.6, heardThrough: 16.5), WordEvent(arrivedAt: 17.6, heardThrough: 17.6),
+            WordEvent(arrivedAt: 18.5, heardThrough: 18.4), WordEvent(arrivedAt: 19.5, heardThrough: 19.4),
+            WordEvent(arrivedAt: 20.4, heardThrough: 20.4), WordEvent(arrivedAt: 21.4, heardThrough: 21.3),
+            WordEvent(arrivedAt: 22.4, heardThrough: 22.3), WordEvent(arrivedAt: 23.3, heardThrough: 23.2),
+        ],
+        duration: 23.4
+    )
 }

@@ -804,3 +804,199 @@ final class LevelMeterTests: XCTestCase {
         XCTAssertEqual(meter.consumePeak(), -45)
     }
 }
+
+final class SpeechConfirmationTests: XCTestCase {
+    private let start = Date(timeIntervalSince1970: 0)
+
+    private func at(_ seconds: TimeInterval) -> Date { start.addingTimeInterval(seconds) }
+
+    /// Hold one gate decision steady across a stretch of time, at the app's
+    /// real tick rate, and return the last decision.
+    @discardableResult
+    private func run(
+        _ confirmation: inout SpeechConfirmation,
+        gateSpeaking: Bool,
+        gateStartedAt: Date?,
+        wordsHeardThrough: Date? = nil,
+        from: TimeInterval,
+        to: TimeInterval
+    ) -> SpeechConfirmation.Decision {
+        var decision = SpeechConfirmation.Decision(
+            isSpeaking: confirmation.isSpeaking, speechStartedAt: confirmation.speechStartedAt
+        )
+        let step = 1.0 / 50.0
+        var t = from
+        while t < to {
+            t += step
+            decision = confirmation.update(
+                gateSpeaking: gateSpeaking,
+                gateStartedAt: gateStartedAt,
+                wordsHeardThrough: wordsHeardThrough,
+                now: at(t)
+            )
+        }
+        return decision
+    }
+
+    func testWordsInsideTheWindowConfirmTheGatesOnset() {
+        var confirmation = SpeechConfirmation()
+        // The gate fires at 1.0 s, back-dated to 0.4 s. Nothing shows yet.
+        run(&confirmation, gateSpeaking: true, gateStartedAt: at(0.4), from: 1.0, to: 1.5)
+        XCTAssertFalse(confirmation.isSpeaking, "no words have arrived yet")
+
+        let decision = run(
+            &confirmation, gateSpeaking: true, gateStartedAt: at(0.4),
+            wordsHeardThrough: at(1.4), from: 1.5, to: 1.6
+        )
+        XCTAssertTrue(decision.isSpeaking)
+        XCTAssertEqual(decision.speechStartedAt, at(0.4), "the turn back-dates to the gate's onset")
+    }
+
+    func testCandidateWithoutWordsIsDiscardedAndStaysDiscarded() {
+        var confirmation = SpeechConfirmation()
+        run(&confirmation, gateSpeaking: true, gateStartedAt: at(0.4), from: 1.0, to: 4.5)
+        XCTAssertFalse(confirmation.isSpeaking, "three seconds of typing is not a turn")
+
+        // Words older than the discard - the tail of a previous turn - must
+        // not bring a candidate we've already given up on back to life.
+        let decision = run(
+            &confirmation, gateSpeaking: true, gateStartedAt: at(0.4),
+            wordsHeardThrough: at(0.9), from: 4.5, to: 8.0
+        )
+        XCTAssertFalse(decision.isSpeaking)
+        XCTAssertNil(decision.speechStartedAt)
+    }
+
+    func testGateReleaseResetsAndTheNextTurnNeedsFreshWords() {
+        var confirmation = SpeechConfirmation()
+        run(
+            &confirmation, gateSpeaking: true, gateStartedAt: at(0.4),
+            wordsHeardThrough: at(1.4), from: 1.0, to: 2.0
+        )
+        XCTAssertTrue(confirmation.isSpeaking)
+
+        run(&confirmation, gateSpeaking: false, gateStartedAt: nil, wordsHeardThrough: at(1.4), from: 2.0, to: 2.5)
+        XCTAssertFalse(confirmation.isSpeaking)
+        XCTAssertNil(confirmation.speechStartedAt)
+
+        // A new candidate much later, with the same words still on record:
+        // they're older than its onset, so it waits like any other.
+        let decision = run(
+            &confirmation, gateSpeaking: true, gateStartedAt: at(10.0),
+            wordsHeardThrough: at(1.4), from: 10.5, to: 11.0
+        )
+        XCTAssertFalse(decision.isSpeaking)
+    }
+
+    func testWordsOlderThanTheOnsetDoNotConfirm() {
+        var confirmation = SpeechConfirmation()
+        let decision = run(
+            &confirmation, gateSpeaking: true, gateStartedAt: at(5.0),
+            wordsHeardThrough: at(4.9), from: 5.5, to: 7.0
+        )
+        XCTAssertFalse(decision.isSpeaking, "those words covered audio from before this candidate")
+    }
+
+    /// The recogniser is silent between results and for whole seconds during
+    /// a pause. Only the gate ends a turn.
+    func testConfirmedTurnSurvivesTheRecogniserGoingQuiet() {
+        var confirmation = SpeechConfirmation()
+        run(
+            &confirmation, gateSpeaking: true, gateStartedAt: at(0.4),
+            wordsHeardThrough: at(1.4), from: 1.0, to: 1.5
+        )
+        XCTAssertTrue(confirmation.isSpeaking)
+
+        let decision = run(
+            &confirmation, gateSpeaking: true, gateStartedAt: at(0.4),
+            wordsHeardThrough: at(1.4), from: 1.5, to: 11.5
+        )
+        XCTAssertTrue(decision.isSpeaking, "the window only ever applies to a candidate")
+        XCTAssertEqual(decision.speechStartedAt, at(0.4))
+    }
+
+    /// You type, then talk, without a gap long enough for the gate to let go.
+    /// The words are real, so the turn is real - but it starts where the
+    /// words did, not where the typing did.
+    func testLateWordsConfirmFromWhenTheyWereHeard() {
+        var confirmation = SpeechConfirmation()
+        run(&confirmation, gateSpeaking: true, gateStartedAt: at(0.8), from: 1.0, to: 6.4)
+        XCTAssertFalse(confirmation.isSpeaking)
+
+        let decision = run(
+            &confirmation, gateSpeaking: true, gateStartedAt: at(0.8),
+            wordsHeardThrough: at(6.4), from: 6.4, to: 6.5
+        )
+        XCTAssertTrue(decision.isSpeaking)
+        XCTAssertEqual(decision.speechStartedAt, at(6.4), "not the gate's onset, which was the typing")
+    }
+}
+
+/// Replays the 2026-09-05 measurement through the real detector and the real
+/// confirmation, the way the app runs them: one level per 100 ms microphone
+/// buffer, word events at the moment they arrived.
+final class WordTraceReplayTests: XCTestCase {
+    private struct Replay {
+        /// When the energy gate first called it speech, in seconds from the
+        /// start of the clip.
+        var gateFiredAt: TimeInterval?
+        /// When the lamp would have turned blue, or nil if it never did.
+        var confirmedAt: TimeInterval?
+        /// The onset the turn was back-dated to.
+        var confirmedOnset: TimeInterval?
+        /// The gate's own onset at the moment of confirmation.
+        var gateOnsetAtConfirm: TimeInterval?
+    }
+
+    private func replay(_ trace: RoomTraces.WordTrace) -> Replay {
+        var detector = VoiceActivityDetector()
+        var confirmation = SpeechConfirmation()
+        let start = Date(timeIntervalSince1970: 0)
+        var wordsHeardThrough: Date?
+        var nextWord = 0
+        var result = Replay()
+
+        for (index, level) in trace.levels.enumerated() {
+            let elapsed = Double(index + 1) / 10
+            let now = start.addingTimeInterval(elapsed)
+            while nextWord < trace.words.count, trace.words[nextWord].arrivedAt <= elapsed {
+                wordsHeardThrough = start.addingTimeInterval(trace.words[nextWord].heardThrough)
+                nextWord += 1
+            }
+
+            let gate = detector.update(dBFS: level, now: now)
+            let decision = confirmation.update(
+                gateSpeaking: gate,
+                gateStartedAt: detector.speechStartedAt,
+                wordsHeardThrough: wordsHeardThrough,
+                now: now
+            )
+            if gate, result.gateFiredAt == nil { result.gateFiredAt = elapsed }
+            if decision.isSpeaking, result.confirmedAt == nil {
+                result.confirmedAt = elapsed
+                result.confirmedOnset = decision.speechStartedAt?.timeIntervalSince(start)
+                result.gateOnsetAtConfirm = detector.speechStartedAt?.timeIntervalSince(start)
+            }
+        }
+        return result
+    }
+
+    func testTypingNeverTurnsTheLampBlue() {
+        let result = replay(RoomTraces.typing)
+        XCTAssertNotNil(result.gateFiredAt, "the gate still calls typing speech - that's the bug")
+        XCTAssertNil(result.confirmedAt, "no words, so no turn")
+    }
+
+    func testMusicNeverTurnsTheLampBlue() {
+        let result = replay(RoomTraces.music)
+        XCTAssertNotNil(result.gateFiredAt, "the gate still calls music speech")
+        XCTAssertNil(result.confirmedAt, "no words, so no turn")
+    }
+
+    func testSpokenParagraphTurnsTheLampBlueAtTheGatesOnset() throws {
+        let result = replay(RoomTraces.paragraph)
+        let confirmedAt = try XCTUnwrap(result.confirmedAt, "the paragraph never turned the lamp blue")
+        XCTAssertLessThan(confirmedAt, 2.0, "blue within two seconds of the clip starting")
+        XCTAssertEqual(result.confirmedOnset, result.gateOnsetAtConfirm, "no seconds are lost to the wait")
+    }
+}

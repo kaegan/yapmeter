@@ -27,7 +27,7 @@
 	<key>NSPrincipalClass</key>
 	<string>NSApplication</string>
 	<key>NSMicrophoneUsageDescription</key>
-	<string>Yapmeter listens to your microphone so it can tell when you are the one speaking and time your turn. Nothing is recorded, transcribed, or sent anywhere.</string>
+	<string>Yapmeter listens to your microphone so it can tell when you are the one speaking and time your turn. Nothing is recorded or sent anywhere. Speech recognition runs only on this Mac, only if you turn it on, and keeps no text.</string>
 	<key>NSAudioCaptureUsageDescription</key>
 	<string>Yapmeter listens to the audio your meeting app plays so it can tell when the other person is speaking. Nothing is recorded, transcribed, or sent anywhere.</string>
 	<key>SUFeedURL</key>

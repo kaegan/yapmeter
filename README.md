@@ -17,8 +17,9 @@ finished, a yapping mouth that wears out over a long turn), and when there's
 no meeting he sleeps in the menu bar's own label colour, like the icons
 around him. Clicking him opens a standard menu: a status line saying what
 the app is doing ("Waiting for a meeting", "Listening to Zoom"), then a
-**Sensitivity** submenu, a **Listen to All Audio** submenu, **Launch at
-Login**, a **Developer** submenu, and Quit.
+**Sensitivity** submenu, a **Speech recognition** submenu (macOS 26 and later
+only), a **Listen to All Audio** submenu, **Launch at Login**, a **Developer**
+submenu, and Quit.
 
 The Developer submenu holds **Preview states**, which walks the pet through
 the whole sequence, clock included, so a change to his drawing can be judged
@@ -28,8 +29,10 @@ starts.
 It taps the *output* audio of your meeting app (Zoom, Chrome/Meet, Slack
 huddles) with a CoreAudio process tap for the far end, and the microphone for
 you, runs a voice activity detector over each, and drives a small state
-machine. Nothing is recorded, transcribed, or leaves your Mac — it only ever
-looks at whether there's speech-shaped energy in the signal.
+machine. Nothing is recorded and nothing leaves your Mac; by default it only
+ever looks at whether there's speech-shaped energy in the signal. One optional
+switch adds on-device speech recognition on your own microphone, and it keeps
+no text — see [Telling your voice from your keyboard](#telling-your-voice-from-your-keyboard).
 
 ## Constitution
 
@@ -77,10 +80,50 @@ the default doesn't suit.
 One known limitation: macOS exposes no per-app mute state, so if you're muted
 in Zoom and talking anyway, the turn timer still runs.
 
+## Telling your voice from your keyboard
+
+Speech-shaped energy isn't specific enough at a desk. Measured on 2026-09-05 at
+realistic levels, the detector called fast typing speech for 70-80% of a burst,
+background music for a whole clip, and a fan for 21 of 25 seconds while the
+noise floor caught up — so the turn timer ran while you typed notes on a call.
+Apple's on-device recogniser, fed the same audio, produced no words at all on
+any of them.
+
+**Speech recognition → Wait for words before timing** (macOS 26 and later, off
+by default) makes words the precondition for the lamp turning blue. The energy
+gate runs exactly as before and still owns the onset and the release; when it
+fires, that's a *candidate*, and nothing shows yet. The lamp turns blue the
+moment the recogniser has heard words covering that candidate's audio, and the
+turn is back-dated to the gate's onset, so no seconds are lost — the timer
+simply appears at 0:02 instead of 0:01. If no words arrive within three
+seconds, the candidate is discarded and the lamp never changed. Noise produces
+no words, so noise never produces blue.
+
+What the app takes from recognition is one fact: *there were words, covering
+audio up to this moment*. The text is never read, logged, or stored, the 1 Hz
+debug log stays word-free, and only your microphone is ever fed to it — the far
+end is never transcribed under any setting (constitution boundary 2). The
+recogniser runs only while a call is running, and is dropped when the call
+ends. If your Mac has no on-device model for your language, turning the switch
+on asks macOS to fetch one, which is the only network request the app can cause
+besides the update check; if your language has no model at all, the menu says
+so and the timer behaves as it does today.
+
+Known gaps, in the app's own spirit of saying what it can't see: another person
+talking in the room confirms a candidate as readily as you do, and so does the
+far end leaking from your speakers into the mic (headphones remain the answer).
+If you talk and then keep typing, the gate owns the release, so the turn ends
+when the typing stops rather than when the words did.
+
 ## Requirements
 
 - macOS 14.2+ (needs the CoreAudio process-tap API)
-- Xcode 15.1+
+- macOS 26+ for **Wait for words before timing**; below that the switch isn't
+  shown and everything else works the same
+- Xcode 26+ to build. The app still deploys to macOS 14.2, but `WordWitness`
+  calls `SpeechAnalyzer`, which only exists in the macOS 26 SDK —
+  `@available` is a runtime gate and doesn't put the types into an older one.
+  CI and the release workflow both select Xcode 26 for the same reason.
 - [XcodeGen](https://github.com/yonaskolb/XcodeGen) (`brew install xcodegen`)
 
 ## Build & run
