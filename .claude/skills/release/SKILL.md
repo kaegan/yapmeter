@@ -112,7 +112,7 @@ curl -fsSL https://yapmeter.com/appcast.xml | grep -o 'sparkle:shortVersionStrin
   wait 30 seconds and try again before calling it broken; the first check
   after the v0.2.3 upload did.
 - The workflow logs a warning that the previous feed "could not be
-  fetched" and the feed holds only the new version. Until YAP-77 is fixed
+  fetched" and the feed holds only the new version. Until YAP-49 is fixed
   that is expected on every release, not a failure: the release is
   created before the appcast is uploaded, so `latest` has no feed to
   fetch at that moment. Updates still work; only the history is missing.
@@ -171,7 +171,7 @@ copies will not be offered it.
   the update dialog. Check the labels in step 1 while they can still be
   changed.
 - **The workflow's own "could not be fetched" warning looked like an
-  outage.** It is the step-order bug in YAP-77, present on all six
+  outage.** It is the step-order bug in YAP-49, present on all six
   releases, and the feed it produces still updates people. Read the
   warning, check the live feed names the new version, and move on.
 - **v0.2.3 by the numbers**: tag pushed 23:27, run queued in 10 s, tests
