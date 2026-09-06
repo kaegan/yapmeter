@@ -656,6 +656,36 @@ final class AspectPreviewTests: XCTestCase {
     }
 }
 
+final class UpdateReadinessTests: XCTestCase {
+    func testMayNotInstallDuringAMeeting() {
+        let now = Date()
+        XCTAssertFalse(UpdateReadiness.mayInstall(meetingActive: true, lastMeetingEndedAt: nil, now: now))
+        // A meeting that started right after a previous one ended still wins:
+        // "active" always outranks a leftover end time.
+        XCTAssertFalse(
+            UpdateReadiness.mayInstall(meetingActive: true, lastMeetingEndedAt: now.addingTimeInterval(-120), now: now)
+        )
+    }
+
+    func testMayNotInstallWithinTheSettleWindowAfterAMeetingEnds() {
+        let ended = Date()
+        let now = ended.addingTimeInterval(UpdateReadiness.settleInterval - 1)
+        XCTAssertFalse(UpdateReadiness.mayInstall(meetingActive: false, lastMeetingEndedAt: ended, now: now))
+    }
+
+    func testMayInstallOnceTheSettleWindowPasses() {
+        let ended = Date()
+        let now = ended.addingTimeInterval(UpdateReadiness.settleInterval)
+        XCTAssertTrue(UpdateReadiness.mayInstall(meetingActive: false, lastMeetingEndedAt: ended, now: now))
+    }
+
+    /// A cold launch that has never seen a meeting shouldn't be held back by
+    /// a settle window that never started.
+    func testMayInstallWhenNoMeetingHasEverRun() {
+        XCTAssertTrue(UpdateReadiness.mayInstall(meetingActive: false, lastMeetingEndedAt: nil, now: Date()))
+    }
+}
+
 @MainActor
 final class SignalHeadRendererTests: XCTestCase {
     func testTimeLabelFormatsAsMinutesAndSeconds() {
@@ -764,6 +794,35 @@ final class SignalHeadRendererTests: XCTestCase {
         image.draw(in: NSRect(origin: .zero, size: image.size))
         NSGraphicsContext.restoreGraphicsState()
         return (rep, width, height)
+    }
+
+    /// A pending update only ever shows while `.dark`: it's the one aspect
+    /// where the badge should change the picture. Caching on aspect alone
+    /// (rather than aspect *and* badge) would have handed back whichever of
+    /// the two was drawn first for every call after it, for both assertions
+    /// below.
+    func testUpdateBadgeOnlyChangesTheDarkImage() {
+        let darkPlain = SignalHeadRenderer.menuBarImage(for: .dark, speakingSeconds: nil)
+        let darkBadged = SignalHeadRenderer.menuBarImage(for: .dark, speakingSeconds: nil, updateAvailable: true)
+        XCTAssertNotEqual(
+            renderedBytes(darkPlain), renderedBytes(darkBadged),
+            "a pending update should be visible while dark"
+        )
+
+        let occupiedPlain = SignalHeadRenderer.menuBarImage(for: .occupied, speakingSeconds: nil)
+        let occupiedBadged = SignalHeadRenderer.menuBarImage(
+            for: .occupied, speakingSeconds: nil, updateAvailable: true
+        )
+        XCTAssertEqual(
+            renderedBytes(occupiedPlain), renderedBytes(occupiedBadged),
+            "a pending update must not touch a live aspect's image"
+        )
+    }
+
+    private func renderedBytes(_ image: NSImage) -> [UInt8] {
+        let (rep, width, height) = render(image)
+        guard let data = rep.bitmapData else { return [] }
+        return Array(UnsafeBufferPointer(start: data, count: width * height * 4))
     }
 }
 

@@ -64,6 +64,13 @@ struct YapmeterMenu: View {
             Toggle("Preview states", isOn: $preview.isOn)
         }
         Divider()
+        // A scheduled check found this without ever putting a window on
+        // screen (`SparkleDelegate`); this is the one place it says so. The
+        // same call as the row below brings Sparkle's own window forward,
+        // now that the user is the one asking.
+        if let version = updater.pendingUpdateVersion {
+            Button("Update to \(version)…") { updater.checkForUpdates() }
+        }
         Button("Check for Updates…") { updater.checkForUpdates() }
             .disabled(!updater.canCheckForUpdates)
         // An LSUIElement app has no app menu, so this is the only ⌘Q there is.
