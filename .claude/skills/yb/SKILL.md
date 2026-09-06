@@ -33,10 +33,53 @@ FROM "collection://d0115c29-c2f0-4b88-bf5e-a8df40131280"
 WHERE "userDefined:ID" = 12
 ```
 
-Then fetch the page URL for the body. Page bodies follow the ticket
-template: `## Problem`, `## Acceptance Criteria`, `## Out of Scope`,
-`## Notes`. If `Parent` is set, fetch the epic too; it usually carries the
+Then fetch the page URL for the body. Page bodies follow the template for
+their `Type`:
+
+- **Feature**: `## Problem`, `## Acceptance Criteria`, `## Out of Scope`,
+  `## Notes`.
+- **Bug**: `## What happened`, `## What you expected`, `## Where`,
+  `## Notes`. Planning adds `## Diagnosis`, then `## Plan`.
+- **Epic**: `## Problem`, `## Definition of done`, `## Out of Scope`,
+  `## Notes`.
+- **Idea**: `## The idea`, `## Who it's for`, `## Notes`. An Idea is
+  planned by first rewriting it into the Feature sections.
+- **Chore**: `## What`, `## Why now`, `## Done when`.
+
+A ticket that is missing its sections is a thin ticket for the questions
+gate below. If `Parent` is set, fetch the epic too; it usually carries the
 context the sub-item leaves out.
+
+### Page icons
+
+Notion cannot set a page icon from a property, so whoever creates a ticket
+or changes its `Type` sets the icon. Use Notion's built-in icons; the
+colours match the `Type` select options. Pass the URL as `icon` on
+`notion-create-pages` or `notion-update-page`.
+
+| Type    | Icon URL                                          |
+|---------|---------------------------------------------------|
+| Bug     | `https://www.notion.so/icons/bug_red.svg`         |
+| Epic    | `https://www.notion.so/icons/flag_purple.svg`     |
+| Feature | `https://www.notion.so/icons/star_blue.svg`       |
+| Idea    | `https://www.notion.so/icons/light-bulb_yellow.svg` |
+| Chore   | `https://www.notion.so/icons/wrench_gray.svg`     |
+
+When a session creates a ticket, it creates it from the Notion template for
+its Type with `template_id` on `notion-create-pages`, then sets the other
+properties. The template carries the icon, the Type, `Source` = Kaegan and
+the body sections; override `Source` to Claude when the idea is yours.
+
+| Type    | Template ID                        |
+|---------|------------------------------------|
+| Bug     | `3d392e452f1380bca37ee4dc66697c1d` |
+| Epic    | `3d392e452f138067ae44fc94edb33b61` |
+| Feature | `3d292e452f13808ba075f1bc5d6e11c1` |
+| Idea    | `3d392e452f138073ac15e87cb04f7076` |
+| Chore   | `3d392e452f1380688f9bec3cfffb684b` |
+
+A ticket Kaegan makes from a template needs no icon step. One made without
+a template gets its icon the next time a session touches it.
 
 Status values, in order: `Idea`, `Next Up`, `Planning`, `Building`,
 `Reviewing`, `Done`, `Not doing`. Never hand-edit the `GitHub` relation;
