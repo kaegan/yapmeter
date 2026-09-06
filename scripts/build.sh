@@ -27,6 +27,25 @@ if [ ! -d "$BUILT_APP" ]; then
   exit 1
 fi
 
+# Quit the running copy before replacing its bundle. Replacing the bundle
+# under a live process leaves it unable to prove its identity to macOS, so
+# Sparkle's next install fails with "an error occurred while launching the
+# installer" (YAP-72). The pgrep guard matters: `tell application ... to
+# quit` launches the app if nothing is running.
+if pgrep -xq Yapmeter; then
+  echo "==> Quitting the running Yapmeter"
+  osascript -e 'tell application id "fyi.kaegan.yapmeter" to quit' >/dev/null 2>&1 || true
+  for _ in $(seq 1 20); do
+    pgrep -xq Yapmeter || break
+    sleep 0.25
+  done
+  if pgrep -xq Yapmeter; then
+    echo "    Still running after 5s, killing it"
+    pkill -x Yapmeter || true
+    sleep 1
+  fi
+fi
+
 echo "==> Installing to $INSTALL_DIR"
 mkdir -p "$INSTALL_DIR"
 rm -rf "$INSTALL_DIR/$APP_NAME"
