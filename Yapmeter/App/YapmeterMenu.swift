@@ -12,7 +12,12 @@ struct YapmeterMenu: View {
 
     var body: some View {
         Text(statusText)
-        if case .microphoneUnavailable = engine.audioMonitor.status {
+        // The permission button outranks the microphone one: with the far end
+        // dead there is nothing to time turns against, so it's the thing to
+        // fix first.
+        if engine.audioMonitor.isFarEndSilent {
+            Button("Open System Audio Settings…", action: openSystemAudioSettings)
+        } else if case .microphoneUnavailable = engine.audioMonitor.status {
             Button("Open Microphone Settings…", action: openMicrophoneSettings)
         }
         Divider()
@@ -90,6 +95,11 @@ struct YapmeterMenu: View {
     /// because it's what capture is actually running on while it's on.
     private var statusText: String {
         let monitor = engine.audioMonitor
+        // Before everything else, including the override: a tap that hears
+        // nothing is the reason the lamp is dark, whatever it's tapping.
+        if monitor.isFarEndSilent {
+            return "System Audio Recording is off, so Yap can't hear the meeting"
+        }
         if monitor.listenToAllAudio {
             guard let until = monitor.listenToAllAudioUntil else { return "Listening to all audio" }
             return "Listening to all audio until \(until.formatted(date: .omitted, time: .shortened))"
@@ -99,7 +109,9 @@ struct YapmeterMenu: View {
         case .starting: return "Starting…"
         case .running(let bundleIDs): return "Listening to \(appList(bundleIDs))"
         case .microphoneUnavailable: return "Microphone unavailable, so the turn timer is off"
-        case .error: return "Couldn't listen to the meeting audio"
+        // Distinct from the permission line above on purpose: this one is
+        // CoreAudio refusing to start, which no settings pane will fix.
+        case .error: return "Couldn't start the meeting audio capture"
         }
     }
 
@@ -142,7 +154,20 @@ struct YapmeterMenu: View {
     }
 
     private func openMicrophoneSettings() {
-        let pane = "x-apple.systempreferences:com.apple.preference.security?Privacy_Microphone"
+        openSettings(anchor: "Privacy_Microphone")
+    }
+
+    /// Opens the Screen & System Audio Recording pane and earns the one retry
+    /// the tap gets: the permission takes effect without a relaunch, but only
+    /// for a tap built after it was granted, and nothing here retries on its
+    /// own.
+    private func openSystemAudioSettings() {
+        engine.audioMonitor.armCaptureRetry()
+        openSettings(anchor: "Privacy_AudioCapture")
+    }
+
+    private func openSettings(anchor: String) {
+        let pane = "x-apple.systempreferences:com.apple.preference.security?\(anchor)"
         if let url = URL(string: pane) {
             NSWorkspace.shared.open(url)
         }

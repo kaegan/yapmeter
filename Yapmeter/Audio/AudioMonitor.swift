@@ -1,3 +1,4 @@
+import AppKit
 import AVFoundation
 import Foundation
 import Observation
@@ -34,6 +35,19 @@ final class AudioMonitor {
 
     private(set) var status: Status = .waitingForMeeting
     private(set) var isMeetingActive = false
+
+    /// The tap is running and delivering nothing but bit-exact zeros, which
+    /// is what a refused - or later revoked - System Audio Recording
+    /// permission looks like from in here. There is no error to go on; see
+    /// `TapSilence` for why. Kept beside `status` rather than inside it, so
+    /// it can be true at the same time as `.microphoneUnavailable`.
+    private(set) var isFarEndSilent = false
+    private var tapSilence = TapSilence()
+
+    /// Set when the user opens System Audio Settings from the menu, and
+    /// cleared by the one retry it earns. Nothing retries on its own.
+    private var isRetryArmed = false
+    private var activationObservers: [any NSObjectProtocol] = []
 
     /// Whether the turn timer waits for on-device recognition to hear words
     /// before it starts. `SignalEngine` owns the setting and persists it; this
@@ -124,9 +138,11 @@ final class AudioMonitor {
 
     func start() {
         guard detectTimer == nil else { return }
+        observeReturnFromSettings()
         detect()
         detectTimer = Timer.scheduledTimer(withTimeInterval: detectInterval, repeats: true) { [weak self] _ in
             Task { @MainActor in
+                self?.checkTapHealth()
                 self?.detect()
             }
         }
@@ -137,6 +153,88 @@ final class AudioMonitor {
         detectTimer = nil
         tearDownCapture()
     }
+
+    // MARK: - A tap that hears nothing
+
+    /// One pass of the blocked-tap check, on the same 2 s tick as detection.
+    private func checkTapHealth(now: Date = Date()) {
+        guard tapSource.isRunning else { return }
+        let verdict = tapSilence.update(
+            isDelivering: tapSource.consumeIsDelivering(),
+            heardNonZero: tapSource.hasHeardNonZeroAudio,
+            nearEndAlive: micSource.levelMeter.hasReceivedAudio,
+            now: now
+        )
+        let blocked = verdict == .blocked
+        if blocked != isFarEndSilent {
+            if blocked {
+                Self.logger.error("Process tap is delivering silence only; System Audio Recording looks to be off")
+            }
+            isFarEndSilent = blocked
+        }
+    }
+
+    /// The user has gone to System Settings from the menu, so the tap is
+    /// worth building once more when they come back. One attempt, armed by a
+    /// press: the permission takes effect without relaunching, but only for a
+    /// tap created after it was granted.
+    func armCaptureRetry() {
+        isRetryArmed = true
+    }
+
+    /// Tear the tap down and build it again on the call that's already
+    /// running. Detection restarts it on its next pass when there is no
+    /// override to hand it back to.
+    func retryCapture() {
+        guard isMeetingActive || listenToAllAudio else { return }
+        let underOverride = listenToAllAudio
+        tearDownCapture()
+        tapSilence.reset()
+        isFarEndSilent = false
+        quietPolls = 0
+        if underOverride {
+            isMeetingActive = true
+            startCapture(for: nil)
+        } else {
+            isMeetingActive = false
+            detect()
+        }
+    }
+
+    /// Fires the armed retry when the user comes back from System Settings,
+    /// either by leaving it or by activating Yapmeter itself.
+    private func observeReturnFromSettings() {
+        guard activationObservers.isEmpty else { return }
+        let workspace = NSWorkspace.shared.notificationCenter
+        activationObservers.append(
+            workspace.addObserver(
+                forName: NSWorkspace.didDeactivateApplicationNotification,
+                object: nil,
+                queue: .main
+            ) { [weak self] note in
+                let app = note.userInfo?[NSWorkspace.applicationUserInfoKey] as? NSRunningApplication
+                guard app?.bundleIdentifier == Self.systemSettingsBundleID else { return }
+                Task { @MainActor in self?.fireArmedRetry() }
+            }
+        )
+        activationObservers.append(
+            NotificationCenter.default.addObserver(
+                forName: NSApplication.didBecomeActiveNotification,
+                object: nil,
+                queue: .main
+            ) { [weak self] _ in
+                Task { @MainActor in self?.fireArmedRetry() }
+            }
+        )
+    }
+
+    private func fireArmedRetry() {
+        guard isRetryArmed else { return }
+        isRetryArmed = false
+        retryCapture()
+    }
+
+    private static let systemSettingsBundleID = "com.apple.systempreferences"
 
     /// Peak level on each end since the last call, for the voice detectors,
     /// plus how far the witness has heard words into your own audio.
@@ -284,6 +382,8 @@ final class AudioMonitor {
         tapSource.stop()
         micSource.stop()
         stopWitness()
+        tapSilence.reset()
+        isFarEndSilent = false
         status = .waitingForMeeting
     }
 
