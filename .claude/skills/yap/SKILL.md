@@ -1,9 +1,9 @@
 ---
-name: yb
-description: Plan, revise, or build one Yapmeter backlog ticket (YB-n) from the Notion backlog. Use when Kaegan says "plan YB-12", "revise YB-12", "work on YB-12", "build YB-12", "plan everything in Next Up", or "/yb plan 12" / "/yb revise 12" / "/yb work 12". The ticket can be given as YB-n, a pasted Notion link, or its title.
+name: yap
+description: Plan, revise, or build one Yapmeter backlog ticket (YAP-n) from the Notion backlog. Use when Kaegan says "plan YAP-12", "revise YAP-12", "work on YAP-12", "build YAP-12", "plan everything in Next Up", or "/yap plan 12" / "/yap revise 12" / "/yap work 12". The ticket can be given as YAP-n, a pasted Notion link, or its title.
 ---
 
-# YB-n: plan a ticket, or build one
+# YAP-n: plan a ticket, or build one
 
 The Notion backlog is the source of truth for *what* to build. The ticket
 page body is where the plan lives. GitHub holds the branch, the PR and CI.
@@ -19,18 +19,18 @@ Kaegan can name a ticket three ways; all of them mean the same row.
 - **A Notion link** (`https://app.notion.com/p/...` or `notion.so/...`):
   fetch it directly. Confirm the page's parent data source is the backlog;
   if it is not, say so and stop.
-- **A number** (`YB-12`, `12`, `#12`): the `ID` property is an
-  auto-increment Notion shows as `YB-n` on the page and in the database.
+- **A number** (`YAP-12`, `12`, `#12`): the `Ticket ID` property is an
+  auto-increment Notion shows as `YAP-n` on the page and in the database.
 - **A title or a few words of it**: query `Name` with `LIKE` and, if more
   than one row matches, list them and ask which.
 
 The backlog data source is `collection://d0115c29-c2f0-4b88-bf5e-a8df40131280`.
-`YB-12` is the row whose `userDefined:ID` is 12:
+`YAP-12` is the row whose `Ticket ID` is 12:
 
 ```sql
-SELECT url, "Name", "Status", "Type", "Area", "Priority", "Notes", "Parent"
+SELECT url, "Ticket ID", "Name", "Status", "Type", "Area", "Notes", "Parent"
 FROM "collection://d0115c29-c2f0-4b88-bf5e-a8df40131280"
-WHERE "userDefined:ID" = 12
+WHERE "Ticket ID" = 12
 ```
 
 Then fetch the page URL for the body. Page bodies follow the template for
@@ -87,7 +87,7 @@ Notion's GitHub integration fills it from the PR description.
 
 Read `CONSTITUTION.md` before planning or building anything.
 
-## `plan YB-n`
+## `plan YAP-n`
 
 1. Set `Status` to `Planning`.
 2. Read the ticket, its epic, and the code it touches. Do not build.
@@ -107,7 +107,7 @@ Read `CONSTITUTION.md` before planning or building anything.
    - Ask the same questions in chat with the AskUserQuestion tool, and
      wait. Do not write a plan on assumed answers.
    - When he answers (in chat, or inline in Notion followed by
-     "plan YB-n" again), fold the answers into the `## Problem` and
+     "plan YAP-n" again), fold the answers into the `## Problem` and
      `## Acceptance Criteria` sections so the ticket stands on its own,
      delete the `## Questions` section, and go on to the plan.
 4. Write a `## Plan` section at the end of the page body (replace an
@@ -125,8 +125,8 @@ Read `CONSTITUTION.md` before planning or building anything.
      state the assumption and move on.
 5. Leave `Status` at `Planning`. Report the plan in chat in a few lines and
    link the page. Kaegan reads it in Notion; he approves by saying
-   "work on YB-n" or by moving the ticket to `Next Up`, or he leaves
-   inline comments and says "revise YB-n".
+   "work on YAP-n" or by moving the ticket to `Next Up`, or he leaves
+   inline comments and says "revise YAP-n".
 
 ### Bug tickets
 
@@ -159,7 +159,7 @@ say so rather than carry one.
    regression test, and anything nearby that the diagnosis showed is
    also wrong but out of scope.
 
-Under `work on YB-n`, the reproduction test from the diagnosis goes into
+Under `work on YAP-n`, the reproduction test from the diagnosis goes into
 the PR first, red, and the fix turns it green.
 
 `plan everything in Next Up` (or `plan Next Up`): query `Status` = `Next Up`,
@@ -169,7 +169,7 @@ In batch mode do not block on questions: write the `## Questions` section,
 leave that ticket unplanned, and list it in the summary under "needs
 answers".
 
-## `revise YB-n`
+## `revise YAP-n`
 
 Kaegan reviews a plan by highlighting a line in Notion and commenting on
 it. This command applies those comments.
@@ -187,14 +187,14 @@ it. This command applies those comments.
 4. Report in chat what changed and which threads are still open. `Status`
    stays `Planning`; he approves the same way as after `plan`.
 
-## `work on YB-n`
+## `work on YAP-n`
 
-1. The page body must have a `## Plan`. If it does not, run `plan YB-n`
+1. The page body must have a `## Plan`. If it does not, run `plan YAP-n`
    and stop; do not build from an unplanned ticket.
 2. Set `Status` to `Building`.
 3. Branch from a fresh `main`:
    ```bash
-   git fetch origin main && git checkout -b claude/yb-12-short-slug origin/main
+   git fetch origin main && git checkout -b claude/yap-12-short-slug origin/main
    ```
 4. Implement the plan. If the plan turns out to be wrong, update the
    `## Plan` section to say what changed and why, then carry on; only stop
@@ -205,15 +205,15 @@ it. This command applies those comments.
    xcodegen generate && xcodebuild test -project Yapmeter.xcodeproj -scheme Yapmeter -configuration Debug -derivedDataPath build/DerivedData CODE_SIGNING_ALLOWED=NO
    ```
 6. Commit, push, and open the PR:
-   - Title: `[YB-12] <ticket name>`. The title, minus the prefix, is the
+   - Title: `[YAP-12] <ticket name>`. The title, minus the prefix, is the
      line the ticket gets in the release notes, so for a Bug say what now
-     works rather than what was broken (`[YB-42] Hear the far end again`,
-     not `[YB-42] The app isn't detecting audio`).
+     works rather than what was broken (`[YAP-42] Hear the far end again`,
+     not `[YAP-42] The app isn't detecting audio`).
    - Label: `enhancement` for a Feature, `bug` for a Bug, none for a Chore
      or anything else (`--label enhancement` on `gh pr create`). Only
      labelled PRs appear in the release notes.
    - Body: a **What** and a **Why** paragraph, then a line reading
-     `close YB-12` on its own (use `ref YB-12` if the PR does not finish
+     `close YAP-12` on its own (use `ref YAP-12` if the PR does not finish
      the ticket). CI fails a PR without that line, and it is what links
      the PR to the Notion row.
    - End the body with the Claude Code attribution footer.
@@ -227,5 +227,5 @@ it. This command applies those comments.
 Do not add a Notion webhook, a routine, a scheduled task, or a cloud
 dispatcher to trigger any of this. Kaegan built that on 2026-09-05 and tore
 it out: runs were invisible, permission prompts piled up, and cloud sessions
-cannot build the Mac app. Typing "work on YB-n" in a desktop session is the
+cannot build the Mac app. Typing "work on YAP-n" in a desktop session is the
 whole trigger.
