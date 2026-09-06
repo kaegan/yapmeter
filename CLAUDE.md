@@ -18,3 +18,10 @@ everything in Next Up", "revise YAP-12"), invoke the `yap` skill in
 `.claude/skills/yap/`. It defines the status transitions, the branch and PR
 conventions, and the rule that nothing is built from a ticket without a
 `## Plan` in its page body.
+
+## Releases
+
+When asked to release ("release", "ship v0.2.3", "cut a release"), invoke
+the `release` skill in `.claude/skills/release/`. A release is a tag on the
+app repo plus a version bump on the site repo, in that order, and the skill
+is the only place that order is written down.
