@@ -15,6 +15,21 @@ targets:
       - path: Yapmeter
         excludes:
           - Info.plist
+          - Yapmeter.entitlements
+    # The hardened runtime refuses the microphone to an app that doesn't
+    # declare com.apple.security.device.audio-input, whatever the toggle
+    # in System Settings says. Debug builds are signed ad hoc without the
+    # hardened runtime and never needed it; the notarized release does
+    # (v0.1.2 shipped without it, YB-42). The sandbox stays off; this is
+    # the hardened-runtime key, not the sandbox one.
+    #
+    # xcodegen rewrites the file at `path` from `properties` on every
+    # generate, so the entitlement lives here, not in the plist. Editing
+    # the plist by hand is undone by the next build.
+    entitlements:
+      path: Yapmeter/Yapmeter.entitlements
+      properties:
+        com.apple.security.device.audio-input: true
     dependencies:
       - package: Sparkle
     settings:
