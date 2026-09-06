@@ -120,7 +120,10 @@ when the typing stops rather than when the words did.
 - macOS 14.2+ (needs the CoreAudio process-tap API)
 - macOS 26+ for **Wait for words before timing**; below that the switch isn't
   shown and everything else works the same
-- Xcode 15.1+
+- Xcode 26+ to build. The app still deploys to macOS 14.2, but `WordWitness`
+  calls `SpeechAnalyzer`, which only exists in the macOS 26 SDK —
+  `@available` is a runtime gate and doesn't put the types into an older one.
+  CI and the release workflow both select Xcode 26 for the same reason.
 - [XcodeGen](https://github.com/yonaskolb/XcodeGen) (`brew install xcodegen`)
 
 ## Build & run
